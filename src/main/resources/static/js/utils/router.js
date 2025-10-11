@@ -51,7 +51,7 @@ class Router {
         this.routes.set('/login', { title: 'ログイン', login: true });
         this.routes.set('/dashboard', { screen: 'dashboardScreen', title: '打刻画面' });
         this.routes.set('/history', { screen: 'historyScreen', title: '勤怠履歴' });
-        this.routes.set('/vacation', { screen: 'vacationScreen', title: '有給申請' });
+        this.routes.set('/vacation', { screen: 'vacationScreen', title: '休暇申請' });
         this.routes.set('/adjustment', { screen: 'adjustmentScreen', title: '打刻修正' });
         
         // 管理者向けルート
@@ -59,7 +59,7 @@ class Router {
         this.routes.set('/admin/employees', { screen: 'adminEmployeesScreen', title: '社員管理', admin: true });
         // 勤怠管理画面は廃止
         this.routes.set('/admin/approvals', { screen: 'adminApprovalsScreen', title: '打刻修正', admin: true });
-        this.routes.set('/admin/vacation-management', { screen: 'adminVacationManagementScreen', title: '有給承認', admin: true });
+        this.routes.set('/admin/vacation-management', { screen: 'adminVacationManagementScreen', title: '休暇管理', admin: true });
     }
 
     /**

@@ -1,159 +1,185 @@
 package com.kintai.dto;
 
+import com.kintai.entity.LeaveStatus;
+import com.kintai.entity.LeaveTimeUnit;
+import com.kintai.entity.LeaveType;
+
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /**
- * 有給休暇申請DTO
+ * 休暇申請レスポンスDTO
  */
-public class VacationRequestDto {
-    
+public class LeaveRequestDto {
+
     private boolean success;
     private String message;
     private String errorCode;
     private Object data;
     private Long employeeId;
     private String username;
-    
-    // デフォルトコンストラクタ
-    public VacationRequestDto() {
+
+    public LeaveRequestDto() {
     }
-    
-    // 成功レスポンス用コンストラクタ
-    public VacationRequestDto(boolean success, String message, VacationData data) {
+
+    public LeaveRequestDto(boolean success, String message, LeaveData data) {
         this.success = success;
         this.message = message;
         this.data = data;
     }
-    
-    // エラーレスポンス用コンストラクタ
-    public VacationRequestDto(boolean success, String errorCode, String message) {
+
+    public LeaveRequestDto(boolean success, String errorCode, String message) {
         this.success = success;
         this.errorCode = errorCode;
         this.message = message;
     }
-    
-    // ゲッター・セッター
+
     public boolean isSuccess() {
         return success;
     }
-    
+
     public void setSuccess(boolean success) {
         this.success = success;
     }
-    
+
     public String getMessage() {
         return message;
     }
-    
+
     public void setMessage(String message) {
         this.message = message;
     }
-    
+
     public String getErrorCode() {
         return errorCode;
     }
-    
+
     public void setErrorCode(String errorCode) {
         this.errorCode = errorCode;
     }
-    
+
     public Object getData() {
         return data;
     }
-    
+
     public void setData(Object data) {
         this.data = data;
     }
-    
+
     public Long getEmployeeId() {
         return employeeId;
     }
-    
+
     public void setEmployeeId(Long employeeId) {
         this.employeeId = employeeId;
     }
-    
+
     public String getUsername() {
         return username;
     }
-    
+
     public void setUsername(String username) {
         this.username = username;
     }
-    
-    /**
-     * 有給休暇申請データ内部クラス
-     */
-    public static class VacationData {
-        private Long vacationId;
+
+    public static class LeaveData {
+        private Long leaveRequestId;
         private Long employeeId;
+        private LeaveType leaveType;
+        private LeaveTimeUnit timeUnit;
         private LocalDate startDate;
         private LocalDate endDate;
-        private Integer days;
-        private String status;
+        private BigDecimal days;
+        private LeaveStatus status;
         private String rejectionComment;
-        
-        // デフォルトコンストラクタ
-        public VacationData() {
+        private String reason;
+
+        public LeaveData() {
         }
-        
-        // コンストラクタ
-        public VacationData(Long vacationId, Long employeeId, LocalDate startDate, 
-                          LocalDate endDate, Integer days, String status) {
-            this.vacationId = vacationId;
+
+        public LeaveData(Long leaveRequestId,
+                         Long employeeId,
+                         LeaveType leaveType,
+                         LeaveTimeUnit timeUnit,
+                         LocalDate startDate,
+                         LocalDate endDate,
+                         BigDecimal days,
+                         LeaveStatus status,
+                         String reason,
+                         String rejectionComment) {
+            this.leaveRequestId = leaveRequestId;
             this.employeeId = employeeId;
+            this.leaveType = leaveType;
+            this.timeUnit = timeUnit;
             this.startDate = startDate;
             this.endDate = endDate;
             this.days = days;
             this.status = status;
+            this.reason = reason;
+            this.rejectionComment = rejectionComment;
         }
-        
-        // ゲッター・セッター
-        public Long getVacationId() {
-            return vacationId;
+
+        public Long getLeaveRequestId() {
+            return leaveRequestId;
         }
-        
-        public void setVacationId(Long vacationId) {
-            this.vacationId = vacationId;
+
+        public void setLeaveRequestId(Long leaveRequestId) {
+            this.leaveRequestId = leaveRequestId;
         }
-        
+
         public Long getEmployeeId() {
             return employeeId;
         }
-        
+
         public void setEmployeeId(Long employeeId) {
             this.employeeId = employeeId;
         }
-        
+
+        public LeaveType getLeaveType() {
+            return leaveType;
+        }
+
+        public void setLeaveType(LeaveType leaveType) {
+            this.leaveType = leaveType;
+        }
+
+        public LeaveTimeUnit getTimeUnit() {
+            return timeUnit;
+        }
+
+        public void setTimeUnit(LeaveTimeUnit timeUnit) {
+            this.timeUnit = timeUnit;
+        }
+
         public LocalDate getStartDate() {
             return startDate;
         }
-        
+
         public void setStartDate(LocalDate startDate) {
             this.startDate = startDate;
         }
-        
+
         public LocalDate getEndDate() {
             return endDate;
         }
-        
+
         public void setEndDate(LocalDate endDate) {
             this.endDate = endDate;
         }
-        
-        public Integer getDays() {
+
+        public BigDecimal getDays() {
             return days;
         }
-        
-        public void setDays(Integer days) {
+
+        public void setDays(BigDecimal days) {
             this.days = days;
         }
-        
-        public String getStatus() {
+
+        public LeaveStatus getStatus() {
             return status;
         }
-        
-        public void setStatus(String status) {
+
+        public void setStatus(LeaveStatus status) {
             this.status = status;
         }
 
@@ -163,6 +189,14 @@ public class VacationRequestDto {
 
         public void setRejectionComment(String rejectionComment) {
             this.rejectionComment = rejectionComment;
+        }
+
+        public String getReason() {
+            return reason;
+        }
+
+        public void setReason(String reason) {
+            this.reason = reason;
         }
     }
 }

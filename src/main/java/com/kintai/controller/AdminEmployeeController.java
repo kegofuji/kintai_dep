@@ -3,13 +3,13 @@ package com.kintai.controller;
 import com.kintai.entity.Employee;
 import com.kintai.entity.AttendanceRecord;
 import com.kintai.entity.AdjustmentRequest;
-import com.kintai.entity.VacationRequest;
+import com.kintai.entity.LeaveRequest;
 import com.kintai.repository.EmployeeRepository;
 import com.kintai.entity.UserAccount;
 import com.kintai.repository.UserAccountRepository;
 import com.kintai.repository.AttendanceRecordRepository;
 import com.kintai.repository.AdjustmentRequestRepository;
-import com.kintai.repository.VacationRequestRepository;
+import com.kintai.repository.LeaveRequestRepository;
 import com.kintai.service.AuthService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -39,7 +39,7 @@ public class AdminEmployeeController {
     @Autowired
     private AdjustmentRequestRepository adjustmentRequestRepository;
     @Autowired
-    private VacationRequestRepository vacationRequestRepository;
+    private LeaveRequestRepository leaveRequestRepository;
     @Autowired
     private AuthService authService;
 
@@ -181,9 +181,9 @@ public class AdminEmployeeController {
             List<AdjustmentRequest> adjustmentRequests = adjustmentRequestRepository.findByEmployeeIdOrderByCreatedAtDesc(employeeId);
             adjustmentRequestRepository.deleteAll(adjustmentRequests);
             
-            // 有給申請を削除
-            List<VacationRequest> vacationRequests = vacationRequestRepository.findByEmployeeIdOrderByCreatedAtDesc(employeeId);
-            vacationRequestRepository.deleteAll(vacationRequests);
+            // 休暇申請を削除
+            List<LeaveRequest> leaveRequests = leaveRequestRepository.findByEmployeeIdOrderByCreatedAtDesc(employeeId);
+            leaveRequestRepository.deleteAll(leaveRequests);
             
             System.out.println("新規社員の勤怠データをクリア完了: EmployeeID=" + employeeId);
         } catch (Exception e) {
@@ -294,5 +294,4 @@ public class AdminEmployeeController {
         }
     }
 }
-
 

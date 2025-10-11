@@ -447,8 +447,8 @@ class AdjustmentScreen {
         }
 
         const response = await fetchWithAuth.handleApiCall(
-            () => fetchWithAuth.get(`/api/vacation/${window.currentEmployeeId}`),
-            '有給申請の取得に失敗しました'
+            () => fetchWithAuth.get(`/api/leave/requests/${window.currentEmployeeId}`),
+            '休暇申請の取得に失敗しました'
         );
 
         let list = [];

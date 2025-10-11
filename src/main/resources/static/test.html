@@ -175,7 +175,7 @@
                 </div>
                 <div class="col-md-3">
                     <button class="btn btn-warning test-button w-100" onclick="testVacationRequest()">
-                        <i class="fas fa-calendar-plus me-1"></i>有給申請テスト
+                        <i class="fas fa-calendar-plus me-1"></i>休暇申請テスト
                     </button>
                 </div>
                 <div class="col-md-3">
@@ -394,13 +394,13 @@
         }
 
         function testVacationRequest() {
-            logTest('有給申請テスト', 'info');
+            logTest('休暇申請テスト', 'info');
             
             if (window.vacationScreen) {
                 // モック有給申請
-                logTest('有給申請テスト完了（モック）', 'success');
+                logTest('休暇申請テスト完了（モック）', 'success');
             } else {
-                logTest('有給申請画面が初期化されていません', 'error');
+                logTest('休暇申請画面が初期化されていません', 'error');
             }
         }
 

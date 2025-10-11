@@ -16,7 +16,7 @@ class FetchWithAuth {
             // 複数のコントローラーからCSRFトークンを取得を試行
             const endpoints = [
                 '/api/attendance/csrf-token',
-                '/api/vacation/csrf-token',
+                '/api/leave/csrf-token',
                 '/api/admin/csrf-token'
             ];
             

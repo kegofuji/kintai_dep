@@ -1,5 +1,5 @@
 /**
- * 有給申請画面モジュール
+ * 休暇申請画面モジュール
  */
 class VacationScreen {
     constructor() {
@@ -7,20 +7,41 @@ class VacationScreen {
         this.vacationStartDate = null;
         this.vacationEndDate = null;
         this.vacationReason = null;
-        this.remainingVacationDays = null;
+        this.leaveTypeSelect = null;
+        this.balanceSummary = null;
+        this.reasonLabel = null;
+        this.reasonRequiredMark = null;
+        this.specialNotice = null;
         this.prefillCancelButton = null;
         this.formTitle = null;
+
         this.listenersBound = false;
+        this.remainingByType = {};
+        this.activeGrantsByType = new Map();
+        this.specialAllowedDates = new Set();
+
+        this.leaveTypeDisplayMap = {
+            PAID_LEAVE: '有休',
+            SUMMER: '夏季休暇',
+            WINTER: '冬季休暇',
+            SPECIAL: '特別休暇'
+        };
+
+        this.timeUnitDisplayMap = {
+            FULL_DAY: '全日',
+            HALF_AM: '半休（AM）',
+            HALF_PM: '半休（PM）'
+        };
     }
 
     /**
-     * 初期化
+     * 初期化処理
      */
-    init() {
+    async init() {
         this.initializeElements();
         this.setupEventListeners();
-        this.loadRemainingVacationDays();
         this.clearPrefillState();
+        await this.loadAllSupportingData();
     }
 
     /**
@@ -31,7 +52,11 @@ class VacationScreen {
         this.vacationStartDate = document.getElementById('vacationStartDate');
         this.vacationEndDate = document.getElementById('vacationEndDate');
         this.vacationReason = document.getElementById('vacationReason');
-        this.remainingVacationDays = document.getElementById('remainingVacationDays');
+        this.leaveTypeSelect = document.getElementById('vacationTypeSelect');
+        this.balanceSummary = document.getElementById('vacationBalanceSummary');
+        this.reasonLabel = document.getElementById('vacationReasonLabel');
+        this.reasonRequiredMark = document.getElementById('vacationReasonRequiredMark');
+        this.specialNotice = document.getElementById('vacationSpecialNotice');
         this.prefillCancelButton = document.getElementById('vacationFormCancel');
         this.formTitle = document.getElementById('vacationFormTitle');
     }
@@ -41,60 +66,70 @@ class VacationScreen {
      */
     setupEventListeners() {
         if (this.listenersBound) return;
+
         if (this.vacationForm) {
             this.vacationForm.addEventListener('submit', (e) => this.handleVacationSubmit(e));
         }
 
-        // 日付変更時のバリデーション
+        if (this.leaveTypeSelect) {
+            this.leaveTypeSelect.addEventListener('change', () => this.handleLeaveTypeChange());
+        }
+
         if (this.vacationStartDate) {
-            this.vacationStartDate.addEventListener('change', () => this.validateDateRange());
+            this.vacationStartDate.addEventListener('change', () => this.syncEndDateIfNeeded());
         }
 
         if (this.vacationEndDate) {
-            this.vacationEndDate.addEventListener('change', () => this.validateDateRange());
+            this.vacationEndDate.addEventListener('change', () => this.handleDateRangeChange());
         }
+
         this.listenersBound = true;
     }
 
+    /**
+     * プレフィル解除
+     */
     clearPrefillState() {
         if (this.formTitle) {
-            this.formTitle.textContent = '有給申請';
+            this.formTitle.textContent = '休暇申請';
         }
         if (this.prefillCancelButton) {
             this.prefillCancelButton.style.display = 'none';
             this.prefillCancelButton.onclick = null;
         }
+        if (this.leaveTypeSelect) {
+            // 先頭の利用可能な選択肢を選択
+            const availableOption = Array.from(this.leaveTypeSelect.options).find((opt) => !opt.disabled);
+            if (availableOption) {
+                this.leaveTypeSelect.value = availableOption.value;
+            }
+        }
+        this.handleLeaveTypeChange();
     }
 
-    prefillForm({ startDate, endDate, reason }) {
+    /**
+     * プレフィル
+     */
+    prefillForm({ startDate, endDate, reason, leaveType, timeUnit }) {
         if (!this.vacationForm) {
             this.init();
         }
 
         this.clearPrefillState();
 
-        if (startDate && this.vacationStartDate) {
-            const parsed = new Date(startDate);
-            if (!Number.isNaN(parsed.getTime())) {
-                const yyyy = parsed.getFullYear();
-                const mm = String(parsed.getMonth() + 1).padStart(2, '0');
-                const dd = String(parsed.getDate()).padStart(2, '0');
-                this.vacationStartDate.value = `${yyyy}-${mm}-${dd}`;
-            } else {
-                this.vacationStartDate.value = startDate;
+        if (leaveType && timeUnit && this.leaveTypeSelect) {
+            const candidate = `${leaveType}:${timeUnit}`;
+            if (Array.from(this.leaveTypeSelect.options).some((opt) => opt.value === candidate)) {
+                this.leaveTypeSelect.value = candidate;
             }
         }
 
+        if (startDate && this.vacationStartDate) {
+            this.vacationStartDate.value = this.normalizeDateString(startDate);
+        }
+
         if (endDate && this.vacationEndDate) {
-            const parsed = new Date(endDate);
-            if (!Number.isNaN(parsed.getTime())) {
-                const yyyy = parsed.getFullYear();
-                const mm = String(parsed.getMonth() + 1).padStart(2, '0');
-                const dd = String(parsed.getDate()).padStart(2, '0');
-                this.vacationEndDate.value = `${yyyy}-${mm}-${dd}`;
-            } else {
-                this.vacationEndDate.value = endDate;
-            }
+            this.vacationEndDate.value = this.normalizeDateString(endDate);
         }
 
         if (this.vacationReason) {
@@ -102,7 +137,7 @@ class VacationScreen {
         }
 
         if (this.formTitle) {
-            this.formTitle.textContent = '有給申請の再申請';
+            this.formTitle.textContent = '休暇申請の再申請';
         }
 
         if (this.prefillCancelButton) {
@@ -112,66 +147,292 @@ class VacationScreen {
                 this.clearPrefillState();
             };
         }
+
+        this.handleLeaveTypeChange();
     }
 
     /**
-     * 残有給日数読み込み
+     * 補助データの読み込み
      */
-    async loadRemainingVacationDays() {
+    async loadAllSupportingData() {
         if (!window.currentEmployeeId) {
-            // 管理者など従業員IDが紐付かないセッションでは何もしない
             return;
         }
+        await Promise.all([
+            this.loadRemainingVacationDays(),
+            this.loadActiveGrants()
+        ]);
+        this.updateLeaveTypeAvailability();
+        this.handleLeaveTypeChange();
+    }
 
-        if (!this.remainingVacationDays) {
+    /**
+     * 残休暇日数読み込み
+     */
+    async loadRemainingVacationDays() {
+        if (!window.currentEmployeeId || !this.balanceSummary) {
             return;
         }
 
         try {
             const data = await fetchWithAuth.handleApiCall(
-                () => fetchWithAuth.get(`/api/vacation/remaining/${window.currentEmployeeId}`),
-                '残有給日数の取得に失敗しました'
+                () => fetchWithAuth.get(`/api/leave/remaining/${window.currentEmployeeId}`),
+                '休暇残数の取得に失敗しました'
             );
 
-            if (data.success) {
-                const parsed = Number(data.remainingDays);
-                const remaining = Number.isFinite(parsed) ? parsed : 0;
-                this.remainingVacationDays.textContent = `${remaining}日`;
-                this.remainingVacationDays.dataset.remainingDays = String(remaining);
+            if (data && data.success && data.remaining) {
+                this.remainingByType = {};
+                Object.entries(data.remaining).forEach(([key, value]) => {
+                    const numeric = Number(value);
+                    this.remainingByType[key] = Number.isFinite(numeric) ? numeric : 0;
+                });
+                this.renderBalanceSummary();
             } else {
-                this.remainingVacationDays.textContent = '--日';
-                delete this.remainingVacationDays.dataset.remainingDays;
+                this.remainingByType = {};
+                this.balanceSummary.textContent = '--';
             }
         } catch (error) {
-            console.error('残有給日数読み込みエラー:', error);
-            this.remainingVacationDays.textContent = '--日';
-            delete this.remainingVacationDays.dataset.remainingDays;
+            console.error('休暇残数取得エラー:', error);
+            this.balanceSummary.textContent = '--';
         }
     }
 
     /**
-     * 有給申請送信
-     * @param {Event} e - イベント
+     * 付与情報読み込み
+     */
+    async loadActiveGrants() {
+        if (!window.currentEmployeeId) {
+            return;
+        }
+
+        try {
+            const data = await fetchWithAuth.handleApiCall(
+                () => fetchWithAuth.get(`/api/leave/grants/${window.currentEmployeeId}`),
+                '休暇付与情報の取得に失敗しました'
+            );
+
+            this.activeGrantsByType = new Map();
+            this.specialAllowedDates = new Set();
+
+            if (data && data.success && Array.isArray(data.data)) {
+                data.data.forEach((grant) => {
+                    const type = grant.leaveType;
+                    if (!this.activeGrantsByType.has(type)) {
+                        this.activeGrantsByType.set(type, []);
+                    }
+                    this.activeGrantsByType.get(type).push(grant);
+
+                    if (type === 'SPECIAL') {
+                        const grantedDate = this.normalizeDateString(grant.grantedAt);
+                        const expiresAt = this.normalizeDateString(grant.expiresAt);
+                        if (grantedDate) {
+                            const today = new Date();
+                            const grantDateObj = this.parseDate(grantedDate);
+                            let isValid = !!grantDateObj;
+                            if (isValid && expiresAt) {
+                                const expires = this.parseDate(expiresAt);
+                                isValid = expires && expires.getTime() >= today.setHours(0, 0, 0, 0);
+                            }
+                            if (isValid) {
+                                this.specialAllowedDates.add(grantedDate);
+                            }
+                        }
+                    }
+                });
+            }
+
+            this.updateSpecialNotice();
+        } catch (error) {
+            console.error('休暇付与情報取得エラー:', error);
+            this.activeGrantsByType = new Map();
+            this.specialAllowedDates = new Set();
+            this.updateSpecialNotice();
+        }
+    }
+
+    /**
+     * 残数サマリ描画
+     */
+    renderBalanceSummary() {
+        if (!this.balanceSummary) {
+            return;
+        }
+
+        const entries = [
+            ['PAID_LEAVE', '有休'],
+            ['SUMMER', '夏季'],
+            ['WINTER', '冬季'],
+            ['SPECIAL', '特別']
+        ];
+
+        const parts = entries.map(([key, label]) => {
+            const value = this.getRemainingDays(key);
+            return `${label}: ${value % 1 === 0 ? value : value.toFixed(1)}日`;
+        });
+
+        this.balanceSummary.textContent = parts.join(' / ');
+    }
+
+    /**
+     * 特別休暇案内の更新
+     */
+    updateSpecialNotice() {
+        if (!this.specialNotice) {
+            return;
+        }
+
+        if (this.specialAllowedDates.size === 0) {
+            this.specialNotice.classList.add('d-none');
+            this.specialNotice.textContent = '';
+            return;
+        }
+
+        const dates = Array.from(this.specialAllowedDates)
+            .sort()
+            .map((date) => this.formatDateForDisplay(date));
+        this.specialNotice.classList.remove('d-none');
+        this.specialNotice.classList.add('alert', 'alert-info');
+        this.specialNotice.textContent = `特別休暇の申請可能日: ${dates.join(', ')}`;
+    }
+
+    /**
+     * 休暇種別選択変更時の処理
+     */
+    handleLeaveTypeChange() {
+        const { leaveType, timeUnit } = this.getSelectedLeaveType();
+        const isPaidLeave = leaveType === 'PAID_LEAVE';
+        const isHalfDay = timeUnit === 'HALF_AM' || timeUnit === 'HALF_PM';
+        const isSpecial = leaveType === 'SPECIAL';
+
+        if (this.vacationReason) {
+            if (isPaidLeave) {
+                this.vacationReason.required = true;
+                this.vacationReason.placeholder = '休暇理由を入力してください';
+                if (this.reasonRequiredMark) {
+                    this.reasonRequiredMark.classList.remove('d-none');
+                }
+            } else {
+                this.vacationReason.required = false;
+                this.vacationReason.placeholder = '必要に応じて理由を入力してください（任意）';
+                if (this.reasonRequiredMark) {
+                    this.reasonRequiredMark.classList.add('d-none');
+                }
+            }
+        }
+
+        if (this.vacationEndDate) {
+            const disableEndDate = isHalfDay || isSpecial;
+            this.vacationEndDate.disabled = disableEndDate;
+            if (disableEndDate && this.vacationStartDate && this.vacationStartDate.value) {
+                this.vacationEndDate.value = this.vacationStartDate.value;
+            }
+        }
+
+        if (this.specialNotice) {
+            if (isSpecial) {
+                if (this.specialAllowedDates.size > 0) {
+                    this.specialNotice.classList.remove('d-none');
+                } else {
+                    this.specialNotice.classList.add('d-none');
+                }
+            } else if (this.specialAllowedDates.size === 0) {
+                this.specialNotice.classList.add('d-none');
+            }
+        }
+    }
+
+    /**
+     * 日付入力同期
+     */
+    syncEndDateIfNeeded() {
+        if (!this.vacationStartDate || !this.vacationEndDate) {
+            return;
+        }
+        const { leaveType, timeUnit } = this.getSelectedLeaveType();
+        const isHalfDay = timeUnit === 'HALF_AM' || timeUnit === 'HALF_PM';
+        const isSpecial = leaveType === 'SPECIAL';
+
+        if (isHalfDay || isSpecial) {
+            this.vacationEndDate.value = this.vacationStartDate.value;
+        }
+    }
+
+    handleDateRangeChange() {
+        // 範囲変更時の追加処理が必要な場合に備えたプレースホルダー
+    }
+
+    /**
+     * 休暇種別の選択肢を更新
+     */
+    updateLeaveTypeAvailability() {
+        if (!this.leaveTypeSelect) {
+            return;
+        }
+
+        const options = Array.from(this.leaveTypeSelect.options);
+        options.forEach((option) => {
+            const { leaveType, timeUnit } = this.parseOptionValue(option.value);
+            let canSelect = true;
+            const remaining = this.getRemainingDays(leaveType);
+
+            if (leaveType === 'PAID_LEAVE') {
+                if (timeUnit === 'HALF_AM' || timeUnit === 'HALF_PM') {
+                    canSelect = remaining >= 0.5;
+                } else {
+                    canSelect = remaining >= 1;
+                }
+            } else {
+                canSelect = remaining >= 1;
+            }
+
+            if (leaveType === 'SPECIAL') {
+                canSelect = canSelect && this.specialAllowedDates.size > 0;
+            }
+
+            option.disabled = !canSelect;
+        });
+
+        if (this.leaveTypeSelect && this.leaveTypeSelect.value) {
+            const selectedOption = this.leaveTypeSelect.selectedOptions[0];
+            if (selectedOption && selectedOption.disabled) {
+                const fallback = options.find((opt) => !opt.disabled);
+                if (fallback) {
+                    this.leaveTypeSelect.value = fallback.value;
+                }
+            }
+        }
+    }
+
+    /**
+     * 休暇申請送信処理
      */
     async handleVacationSubmit(e) {
         e.preventDefault();
 
-        const startDate = this.vacationStartDate.value;
-        const endDate = this.vacationEndDate && this.vacationEndDate.value ? this.vacationEndDate.value : '';
-        const reason = this.vacationReason.value;
-
-        if (!startDate || !endDate || !reason) {
-            this.showAlert('すべての項目（開始日: *、終了日: *、理由: *）を入力してください', 'warning');
-            return;
-        }
-
-        // 日付の妥当性チェック
-        if (!this.validateDateRange()) {
-            return;
-        }
-
         if (!window.currentEmployeeId) {
             this.showAlert('従業員IDが取得できません', 'danger');
+            return;
+        }
+
+        const { leaveType, timeUnit } = this.getSelectedLeaveType();
+        const startDate = this.vacationStartDate?.value || '';
+        const endDate = this.vacationEndDate?.value || startDate;
+        const reasonRaw = this.vacationReason?.value || '';
+        const reason = reasonRaw.trim();
+
+        if (!startDate || !endDate) {
+            this.showAlert('開始日・終了日の両方を指定してください', 'warning');
+            return;
+        }
+
+        const isPaidLeave = leaveType === 'PAID_LEAVE';
+        if (isPaidLeave && !reason) {
+            this.showAlert('有休の場合は理由を入力してください', 'warning');
+            this.vacationReason?.focus();
+            return;
+        }
+
+        if (!this.validateDateRange()) {
             return;
         }
 
@@ -181,7 +442,7 @@ class VacationScreen {
             if (conflicts.length > 0) {
                 const displayDates = conflicts.map((date) => this.formatDateForDisplay(date)).filter(Boolean);
                 const dateLabel = displayDates.length > 0 ? `対象日（${displayDates.join(', ')}）` : '対象日';
-                this.showAlert(`${dateLabel}には打刻修正申請が存在します。有給申請するには、打刻修正申請を取消してください。`, 'warning');
+                this.showAlert(`${dateLabel}には打刻修正申請が存在します。休暇申請するには、打刻修正申請を取消してください。`, 'warning');
                 return;
             }
         } catch (error) {
@@ -190,93 +451,65 @@ class VacationScreen {
             return;
         }
 
-        // 事前確認
-        const formatConfirmDate = (value) => {
-            if (!value) {
-                return '';
-            }
-            if (typeof value === 'string') {
-                const trimmed = value.length >= 10 ? value.slice(0, 10) : value;
-                if (trimmed.includes('-')) {
-                    return trimmed.replace(/-/g, '/');
-                }
-                return trimmed;
-            }
-            try {
-                const date = new Date(value);
-                if (Number.isNaN(date.getTime())) {
-                    return '';
-                }
-                const yyyy = date.getFullYear();
-                const mm = String(date.getMonth() + 1).padStart(2, '0');
-                const dd = String(date.getDate()).padStart(2, '0');
-                return `${yyyy}/${mm}/${dd}`;
-            } catch (error) {
-                console.warn('日付のフォーマットに失敗しました:', error, value);
-                return '';
-            }
-        };
+        const leaveLabel = this.leaveTypeDisplayMap[leaveType] || leaveType;
+        const unitLabel = this.timeUnitDisplayMap[timeUnit] || '';
 
-        const displayStart = formatConfirmDate(startDate);
-        const displayEnd = formatConfirmDate(endDate);
-        const rangeText = startDate === endDate || displayStart === displayEnd
-            ? displayStart
-            : `${displayStart} 〜 ${displayEnd}`;
+        const displayStart = this.formatDateForDisplay(startDate);
+        const displayEnd = this.formatDateForDisplay(endDate);
+        const rangeText = displayStart === displayEnd ? displayStart : `${displayStart} 〜 ${displayEnd}`;
+        const confirmMessage = `${leaveLabel}${unitLabel ? `（${unitLabel}）` : ''} ${rangeText} の休暇申請を送信します。よろしいですか？`;
+
         const confirmHandler = window.employeeDialog?.confirm;
         if (confirmHandler) {
             const { confirmed } = await confirmHandler({
-                title: '有給申請の送信',
-                message: `有給申請（${rangeText}）を送信します。よろしいですか？`,
+                title: '休暇申請',
+                message: confirmMessage,
                 confirmLabel: '申請する',
                 cancelLabel: 'キャンセル'
             });
             if (!confirmed) {
                 return;
             }
-        } else {
-            const confirmed = window.confirm(`有給申請（${rangeText}）を送信します。よろしいですか？`);
-            if (!confirmed) {
-                return;
-            }
+        } else if (!window.confirm(confirmMessage)) {
+            return;
         }
 
         try {
+            const payload = {
+                employeeId: window.currentEmployeeId,
+                leaveType,
+                timeUnit,
+                startDate,
+                endDate,
+                reason: reason || null
+            };
+
             const data = await fetchWithAuth.handleApiCall(
-                () => fetchWithAuth.post('/api/vacation/request', {
-                    employeeId: window.currentEmployeeId,
-                    startDate: startDate,
-                    endDate: endDate,
-                    reason: reason
-                }),
-                '有給申請に失敗しました'
+                () => fetchWithAuth.post('/api/leave/requests', payload),
+                '休暇申請に失敗しました'
             );
 
-            this.showAlert(data.message, 'success');
-            this.vacationForm.reset();
+            this.showAlert(data.message || '休暇申請が完了しました', 'success');
+            this.vacationForm?.reset();
             this.clearPrefillState();
-            
-            // 残有給日数を再読み込み
-            await this.loadRemainingVacationDays();
-            
-            // 履歴カレンダーを即時反映（存在する場合）
+
+            await this.loadAllSupportingData();
             await this.refreshAllScreens();
         } catch (error) {
-            this.showAlert(error.message, 'danger');
+            this.showAlert(error.message || '休暇申請に失敗しました', 'danger');
         }
     }
 
     /**
      * 日付範囲のバリデーション
-     * @returns {boolean} - バリデーション結果
      */
     validateDateRange() {
-        const startDate = this.vacationStartDate.value;
-        const endDate = this.vacationEndDate && this.vacationEndDate.value ? this.vacationEndDate.value : '';
-
-        if (!startDate || !endDate) {
-            return true; // まだ入力中
+        if (!this.vacationStartDate || !this.vacationEndDate) {
+            return true;
         }
 
+        const startDate = this.vacationStartDate.value;
+        const endDate = this.vacationEndDate.value || startDate;
         const start = this.parseLocalDate(startDate);
         const end = this.parseLocalDate(endDate);
 
@@ -285,142 +518,173 @@ class VacationScreen {
             return false;
         }
 
-        // 終了日は開始日以降である必要がある
         if (end < start) {
             this.showAlert('終了日は開始日以降の日付を選択してください', 'warning');
             this.vacationEndDate.focus();
             return false;
         }
 
-        const requestedDays = this.countRequestedDaysInclusive(start, end);
-        if (requestedDays === 0) {
+        const { leaveType, timeUnit } = this.getSelectedLeaveType();
+        const requestedDays = this.calculateRequestedDays(start, end, timeUnit);
+        if (requestedDays <= 0) {
             this.showAlert('申請期間の日付が不正です', 'warning');
             return false;
         }
 
-        // 申請日数が残有給日数を超えていないかチェック
-        const remainingDays = this.getRemainingDays();
-        if (requestedDays > remainingDays) {
-            this.showAlert(`申請日数（${requestedDays}日）が残有給日数（${remainingDays}日）を超えています`, 'warning');
+        const remaining = this.getRemainingDays(leaveType);
+        if (remaining < requestedDays) {
+            const label = this.leaveTypeDisplayMap[leaveType] || leaveType;
+            this.showAlert(`申請日数（${requestedDays}日）が${label}の残日数（${remaining}日）を超えています`, 'warning');
             return false;
+        }
+
+        // 特別休暇は指定日のみ
+        if (leaveType === 'SPECIAL') {
+            const selectedDates = this.expandDateRange(startDate, endDate);
+            const invalid = selectedDates.filter((date) => !this.specialAllowedDates.has(date));
+            if (invalid.length > 0) {
+                this.showAlert('特別休暇は管理者が指定した日以外では申請できません', 'warning');
+                return false;
+            }
+        }
+
+        // 夏季・冬季休暇は有効期間内のみ
+        if (leaveType === 'SUMMER' || leaveType === 'WINTER') {
+            const selectedDates = this.expandDateRange(startDate, endDate);
+            const grants = this.activeGrantsByType.get(leaveType) || [];
+            const invalid = selectedDates.filter((date) => !this.isDateCoveredByGrant(date, grants));
+            if (invalid.length > 0) {
+                this.showAlert('選択した期間に有効な休暇付与がありません', 'warning');
+                return false;
+            }
         }
 
         return true;
     }
 
-    parseLocalDate(value) {
-        if (!value) return new Date(NaN);
-        const [yearStr, monthStr, dayStr] = value.split('-');
-        const year = parseInt(yearStr, 10);
-        const month = parseInt(monthStr, 10);
-        const day = parseInt(dayStr, 10);
-        if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
-            return new Date(NaN);
+    /**
+     * 選択中の休暇種別と単位を取得
+     */
+    getSelectedLeaveType() {
+        if (!this.leaveTypeSelect || !this.leaveTypeSelect.value) {
+            return { leaveType: 'PAID_LEAVE', timeUnit: 'FULL_DAY' };
         }
-        return new Date(year, month - 1, day);
+        return this.parseOptionValue(this.leaveTypeSelect.value);
     }
 
-    countRequestedDaysInclusive(start, end) {
-        if (!(start instanceof Date) || Number.isNaN(start.getTime()) ||
-            !(end instanceof Date) || Number.isNaN(end.getTime())) {
+    parseOptionValue(value) {
+        if (!value.includes(':')) {
+            return { leaveType: value, timeUnit: 'FULL_DAY' };
+        }
+        const [leaveType, timeUnit] = value.split(':');
+        return {
+            leaveType: leaveType || 'PAID_LEAVE',
+            timeUnit: timeUnit || 'FULL_DAY'
+        };
+    }
+
+    /**
+     * 休暇残数取得
+     */
+    getRemainingDays(leaveType) {
+        if (!leaveType || !this.remainingByType) {
             return 0;
         }
-        if (end < start) {
+        const value = this.remainingByType[leaveType];
+        if (typeof value === 'number') {
+            return Math.max(0, Math.round(value * 10) / 10);
+        }
+        const parsed = Number(value);
+        if (Number.isFinite(parsed)) {
+            return Math.max(0, Math.round(parsed * 10) / 10);
+        }
+        return 0;
+    }
+
+    /**
+     * 申請日数計算
+     */
+    calculateRequestedDays(start, end, timeUnit) {
+        if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
             return 0;
+        }
+        if (timeUnit === 'HALF_AM' || timeUnit === 'HALF_PM') {
+            return 0.5;
         }
 
         let count = 0;
         const cursor = new Date(start.getTime());
         while (cursor <= end) {
-            count++;
+            count += 1;
             cursor.setDate(cursor.getDate() + 1);
         }
         return count;
     }
 
-    getRemainingDays() {
-        if (!this.remainingVacationDays) return 0;
-        const datasetValue = this.remainingVacationDays.dataset?.remainingDays;
-        if (datasetValue !== undefined) {
-            const parsed = parseInt(datasetValue, 10);
-            if (!Number.isNaN(parsed)) {
-                return parsed;
-            }
+    /**
+     * 指定日が付与期間内か判定
+     */
+    isDateCoveredByGrant(dateString, grants) {
+        if (!Array.isArray(grants) || grants.length === 0) {
+            return false;
         }
-        const rawText = this.remainingVacationDays.textContent || '';
-        const match = rawText.match(/-?\d+/);
-        if (match) {
-            const parsed = parseInt(match[0], 10);
-            if (!Number.isNaN(parsed)) {
-                return parsed;
-            }
+        const target = this.parseDate(dateString);
+        if (!target) {
+            return false;
         }
-        return 0;
+        return grants.some((grant) => {
+            const grantStart = this.parseDate(grant.grantedAt) || target;
+            const grantEnd = grant.expiresAt ? this.parseDate(grant.expiresAt) : null;
+            if (grantEnd) {
+                return grantStart.getTime() <= target.getTime() && target.getTime() <= grantEnd.getTime();
+            }
+            return grantStart.getTime() <= target.getTime();
+        });
     }
 
-
     /**
-     * 全画面を更新（リアルタイム反映）
+     * 他画面の更新
      */
     async refreshAllScreens() {
         try {
-            console.log('有給申請後の画面更新を開始します');
-            
-            // 履歴カレンダーを即時反映（存在する場合）
             if (window.historyScreen) {
-                console.log('勤怠履歴画面を更新中...');
                 try {
                     if (typeof window.historyScreen.loadCalendarData === 'function') {
-                        await window.historyScreen.loadCalendarData();
+                        await window.historyScreen.loadCalendarData(true);
+                    } else if (typeof window.historyScreen.loadAttendanceHistory === 'function') {
+                        await window.historyScreen.loadAttendanceHistory();
                     }
-                    if (typeof window.historyScreen.generateCalendar === 'function') {
-                        window.historyScreen.generateCalendar();
-                    }
-                    console.log('勤怠履歴画面の更新完了');
                 } catch (error) {
                     console.warn('勤怠履歴画面の更新に失敗:', error);
                 }
             }
-            
-            // 旧カレンダー画面にも反映（存在する場合）
+
             if (window.calendarScreen) {
-                console.log('カレンダー画面を更新中...');
                 try {
                     if (typeof window.calendarScreen.loadCalendarData === 'function') {
                         await window.calendarScreen.loadCalendarData();
                     }
-                    if (typeof window.calendarScreen.generateCalendar === 'function') {
-                        window.calendarScreen.generateCalendar();
-                    }
-                    console.log('カレンダー画面の更新完了');
                 } catch (error) {
                     console.warn('カレンダー画面の更新に失敗:', error);
                 }
             }
-            
-            // ダッシュボード画面の更新
+
             if (window.dashboardScreen) {
-                console.log('ダッシュボード画面を更新中...');
                 try {
                     if (typeof window.dashboardScreen.loadTodayAttendance === 'function') {
                         await window.dashboardScreen.loadTodayAttendance();
                     }
-                    console.log('ダッシュボード画面の更新完了');
                 } catch (error) {
                     console.warn('ダッシュボード画面の更新に失敗:', error);
                 }
             }
-            
-            console.log('有給申請後の画面更新が完了しました');
         } catch (error) {
-            console.warn('有給申請後の画面更新に失敗しました:', error);
+            console.warn('休暇申請後の画面更新に失敗しました:', error);
         }
     }
 
     /**
      * アラート表示
-     * @param {string} message - メッセージ
-     * @param {string} type - アラートタイプ
      */
     showAlert(message, type = 'info') {
         const alertContainer = document.getElementById('alertContainer');
@@ -435,7 +699,6 @@ class VacationScreen {
 
         alertContainer.appendChild(alertDiv);
 
-        // 5秒後に自動削除
         setTimeout(() => {
             if (alertDiv.parentNode) {
                 alertDiv.parentNode.removeChild(alertDiv);
@@ -459,10 +722,7 @@ class VacationScreen {
     }
 
     async getActiveAdjustmentConflicts(dateStrings) {
-        if (!Array.isArray(dateStrings) || dateStrings.length === 0) {
-            return [];
-        }
-        if (!window.currentEmployeeId) {
+        if (!Array.isArray(dateStrings) || dateStrings.length === 0 || !window.currentEmployeeId) {
             return [];
         }
 
@@ -541,6 +801,18 @@ class VacationScreen {
         }
         const date = new Date(year, month - 1, day);
         return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    parseLocalDate(value) {
+        if (!value) return new Date(NaN);
+        const [yearStr, monthStr, dayStr] = value.split('-');
+        const year = parseInt(yearStr, 10);
+        const month = parseInt(monthStr, 10);
+        const day = parseInt(dayStr, 10);
+        if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
+            return new Date(NaN);
+        }
+        return new Date(year, month - 1, day);
     }
 
     normalizeDateString(value) {

@@ -1,11 +1,11 @@
 package com.kintai.controller;
 
-import com.kintai.dto.VacationRequestDto;
+import com.kintai.dto.LeaveRequestDto;
 import com.kintai.entity.AdjustmentRequest;
 import com.kintai.exception.AttendanceException;
 import com.kintai.exception.VacationException;
 import com.kintai.service.AdjustmentRequestService;
-import com.kintai.service.VacationService;
+import com.kintai.service.LeaveRequestService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,7 +32,7 @@ public class CancellationController {
     private AdjustmentRequestService adjustmentRequestService;
 
     @Autowired
-    private VacationService vacationService;
+    private LeaveRequestService leaveRequestService;
 
     /**
      * 打刻修正申請の取消
@@ -64,19 +64,19 @@ public class CancellationController {
     }
 
     /**
-     * 有給申請の取消
+     * 休暇申請の取消
      */
-    @PostMapping("/vacation")
-    public ResponseEntity<VacationRequestDto> cancelVacation(@Valid @RequestBody VacationCancelRequest request) {
+    @PostMapping("/leave")
+    public ResponseEntity<LeaveRequestDto> cancelLeave(@Valid @RequestBody LeaveCancelRequest request) {
         try {
-            VacationRequestDto response = vacationService.cancelVacationRequest(
-                    request.getVacationId(), request.getEmployeeId());
+            LeaveRequestDto response = leaveRequestService.cancelRequest(
+                    request.getLeaveRequestId(), request.getEmployeeId());
             return ResponseEntity.ok(response);
         } catch (VacationException e) {
-            VacationRequestDto errorResponse = new VacationRequestDto(false, e.getErrorCode(), e.getMessage());
+            LeaveRequestDto errorResponse = new LeaveRequestDto(false, e.getErrorCode(), e.getMessage());
             return ResponseEntity.badRequest().body(errorResponse);
         } catch (Exception e) {
-            VacationRequestDto errorResponse = new VacationRequestDto(false, "INTERNAL_ERROR", "有給申請の取消に失敗しました");
+            LeaveRequestDto errorResponse = new LeaveRequestDto(false, "INTERNAL_ERROR", "休暇申請の取消に失敗しました");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
@@ -106,20 +106,20 @@ public class CancellationController {
         }
     }
 
-    /** 申請ID付き有給取消リクエスト */
-    public static class VacationCancelRequest {
-        @NotNull(message = "有給申請IDは必須です")
-        private Long vacationId;
+    /** 申請ID付き休暇取消リクエスト */
+    public static class LeaveCancelRequest {
+        @NotNull(message = "休暇申請IDは必須です")
+        private Long leaveRequestId;
 
         @NotNull(message = "従業員IDは必須です")
         private Long employeeId;
 
-        public Long getVacationId() {
-            return vacationId;
+        public Long getLeaveRequestId() {
+            return leaveRequestId;
         }
 
-        public void setVacationId(Long vacationId) {
-            this.vacationId = vacationId;
+        public void setLeaveRequestId(Long leaveRequestId) {
+            this.leaveRequestId = leaveRequestId;
         }
 
         public Long getEmployeeId() {

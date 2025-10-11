@@ -89,7 +89,7 @@ public class SecurityConfig {
                 // 認証関連エンドポイントは認証なし
                 .requestMatchers("/api/auth/**").permitAll()
                 // 従業員用エンドポイント
-                .requestMatchers("/api/attendance/**", "/api/vacation/**").hasRole("EMPLOYEE")
+                .requestMatchers("/api/attendance/**", "/api/leave/**").hasRole("EMPLOYEE")
                 // 管理者用エンドポイント
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 // PDF生成

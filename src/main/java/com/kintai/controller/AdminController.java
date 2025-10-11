@@ -1,7 +1,6 @@
 package com.kintai.controller;
 
 import com.kintai.entity.Employee;
-import com.kintai.entity.VacationRequest;
 import com.kintai.service.AdminService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -76,94 +75,6 @@ public class AdminController {
     }
     
     /**
-     * 有給申請承認処理API
-     * @param request 承認リクエスト
-     * @return 承認結果
-     */
-    @PostMapping("/vacation/approve")
-    public ResponseEntity<Map<String, Object>> approveVacation(@RequestBody VacationApprovalRequest request) {
-        try {
-            boolean success = adminService.approveVacation(
-                    request.getVacationId(),
-                    request.isApproved(),
-                    request.getRejectionReason()
-            );
-
-            Map<String, Object> response = new HashMap<>();
-            if (success) {
-                response.put("success", true);
-                response.put("message", request.isApproved() ? "有給申請を承認しました" : "有給申請を却下しました");
-            } else {
-                response.put("success", false);
-                response.put("message", "有給申請の処理に失敗しました");
-            }
-            
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", false);
-            response.put("message", "有給申請処理中にエラーが発生しました: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
-        }
-    }
-    
-    /**
-     * 未承認有給申請一覧取得API
-     * @return 未承認申請一覧
-     */
-    @GetMapping("/vacation/pending")
-    public ResponseEntity<Map<String, Object>> getPendingVacations() {
-        try {
-            List<VacationRequest> pendingRequests = adminService.getPendingVacations();
-            
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("message", "未承認申請一覧を取得しました");
-            response.put("data", pendingRequests);
-            
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", false);
-            response.put("message", "未承認申請一覧の取得に失敗しました: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
-        }
-    }
-
-    /**
-     * ステータス別 有給申請一覧取得API
-     * @param status 取得対象ステータス（PENDING/APPROVED/REJECTED）
-     * @return 有給申請一覧
-     */
-    @GetMapping("/vacation/status/{status}")
-    public ResponseEntity<Map<String, Object>> getVacationsByStatus(@PathVariable String status) {
-        try {
-            com.kintai.entity.VacationStatus vs;
-            try {
-                vs = com.kintai.entity.VacationStatus.valueOf(status.toUpperCase());
-            } catch (IllegalArgumentException e) {
-                Map<String, Object> error = new HashMap<>();
-                error.put("success", false);
-                error.put("message", "無効なステータスです: " + status);
-                return ResponseEntity.badRequest().body(error);
-            }
-
-            List<VacationRequest> list = adminService.getVacationsByStatus(vs);
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("data", list);
-            response.put("count", list.size());
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            Map<String, Object> error = new HashMap<>();
-            error.put("success", false);
-            error.put("message", "有給申請一覧の取得に失敗しました: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
-        }
-    }
-    
-    
-    /**
      * CSRFトークン取得API
      * @param request HTTPリクエスト
      * @return CSRFトークン
@@ -195,40 +106,6 @@ public class AdminController {
         
         public void setYearMonth(String yearMonth) {
             this.yearMonth = yearMonth;
-        }
-    }
-    
-    
-    /**
-     * 有給申請承認リクエスト内部クラス
-     */
-    public static class VacationApprovalRequest {
-        private Long vacationId;
-        private boolean approved;
-        private String rejectionReason;
-        
-        public Long getVacationId() {
-            return vacationId;
-        }
-        
-        public void setVacationId(Long vacationId) {
-            this.vacationId = vacationId;
-        }
-        
-        public boolean isApproved() {
-            return approved;
-        }
-        
-        public void setApproved(boolean approved) {
-            this.approved = approved;
-        }
-
-        public String getRejectionReason() {
-            return rejectionReason;
-        }
-
-        public void setRejectionReason(String rejectionReason) {
-            this.rejectionReason = rejectionReason;
         }
     }
 }

@@ -2,18 +2,20 @@ package com.kintai.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kintai.dto.AdjustmentRequestDto;
-import com.kintai.dto.VacationRequestDto;
+import com.kintai.dto.LeaveRequestDto;
 import com.kintai.entity.AdjustmentRequest;
 import com.kintai.entity.AttendanceRecord;
 import com.kintai.entity.Employee;
-import com.kintai.entity.VacationRequest;
-import com.kintai.entity.VacationStatus;
+import com.kintai.entity.LeaveRequest;
+import com.kintai.entity.LeaveStatus;
+import com.kintai.entity.LeaveTimeUnit;
+import com.kintai.entity.LeaveType;
 import com.kintai.repository.AdjustmentRequestRepository;
 import com.kintai.repository.AttendanceRecordRepository;
 import com.kintai.repository.EmployeeRepository;
-import com.kintai.repository.VacationRequestRepository;
+import com.kintai.repository.LeaveRequestRepository;
 import com.kintai.service.AdjustmentRequestService;
-import com.kintai.service.VacationService;
+import com.kintai.service.LeaveRequestService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -61,7 +63,7 @@ class CancellationControllerTest {
     AdjustmentRequestService adjustmentRequestService;
 
     @Autowired
-    VacationService vacationService;
+    LeaveRequestService leaveRequestService;
 
     @Autowired
     AdjustmentRequestRepository adjustmentRequestRepository;
@@ -70,7 +72,7 @@ class CancellationControllerTest {
     AttendanceRecordRepository attendanceRecordRepository;
 
     @Autowired
-    VacationRequestRepository vacationRequestRepository;
+    LeaveRequestRepository leaveRequestRepository;
 
     private Employee employee;
     private Employee approver;
@@ -154,80 +156,100 @@ class CancellationControllerTest {
     }
 
     @Test
-    void cancelPendingVacationRequest() throws Exception {
+    void cancelPendingLeaveRequest() throws Exception {
         LocalDate start = LocalDate.of(2025, 9, 3);
-        VacationRequestDto requestDto = vacationService.createVacationRequest(
-                employee.getEmployeeId(), start, start, "有給理由");
+        LeaveRequestDto requestDto = leaveRequestService.createLeaveRequest(
+                employee.getEmployeeId(),
+                LeaveType.PAID_LEAVE,
+                LeaveTimeUnit.FULL_DAY,
+                start,
+                start,
+                "有休理由");
 
-        VacationRequestDto.VacationData responseData = (VacationRequestDto.VacationData) requestDto.getData();
-        Long vacationId = responseData.getVacationId();
+        LeaveRequestDto.LeaveData responseData = (LeaveRequestDto.LeaveData) requestDto.getData();
+        Long leaveRequestId = responseData.getLeaveRequestId();
         String payload = objectMapper.writeValueAsString(
                 Map.of(
-                        "vacationId", vacationId,
+                        "leaveRequestId", leaveRequestId,
                         "employeeId", employee.getEmployeeId()
                 ));
 
-        mockMvc.perform(post("/api/cancel/vacation")
+        mockMvc.perform(post("/api/cancel/leave")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
 
-        VacationRequest updated = vacationRequestRepository.findById(vacationId).orElseThrow();
-        assertThat(updated.getStatus()).isEqualTo(VacationStatus.CANCELLED);
+        LeaveRequest updated = leaveRequestRepository.findById(leaveRequestId).orElseThrow();
+        assertThat(updated.getStatus()).isEqualTo(LeaveStatus.CANCELLED);
     }
 
     @Test
-    void cancelApprovedVacationRequest() throws Exception {
+    void cancelApprovedLeaveRequest() throws Exception {
         LocalDate start = LocalDate.of(2025, 9, 4);
         LocalDate end = start.plusDays(1);
-        VacationRequestDto requestDto = vacationService.createVacationRequest(
-                employee.getEmployeeId(), start, end, "連休理由");
+        LeaveRequestDto requestDto = leaveRequestService.createLeaveRequest(
+                employee.getEmployeeId(),
+                LeaveType.PAID_LEAVE,
+                LeaveTimeUnit.FULL_DAY,
+                start,
+                end,
+                "連休理由");
 
-        VacationRequestDto.VacationData responseData = (VacationRequestDto.VacationData) requestDto.getData();
-        Long vacationId = responseData.getVacationId();
-        vacationService.updateVacationStatus(vacationId, VacationStatus.APPROVED);
+        LeaveRequestDto.LeaveData responseData = (LeaveRequestDto.LeaveData) requestDto.getData();
+        Long leaveRequestId = responseData.getLeaveRequestId();
+        leaveRequestService.updateStatus(leaveRequestId, LeaveStatus.APPROVED, approver.getEmployeeId(), null);
 
         String payload = objectMapper.writeValueAsString(
                 Map.of(
-                        "vacationId", vacationId,
+                        "leaveRequestId", leaveRequestId,
                         "employeeId", employee.getEmployeeId()
                 ));
 
-        mockMvc.perform(post("/api/cancel/vacation")
+        mockMvc.perform(post("/api/cancel/leave")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
 
-        VacationRequest updated = vacationRequestRepository.findById(vacationId).orElseThrow();
-        assertThat(updated.getStatus()).isEqualTo(VacationStatus.CANCELLED);
+        LeaveRequest updated = leaveRequestRepository.findById(leaveRequestId).orElseThrow();
+        assertThat(updated.getStatus()).isEqualTo(LeaveStatus.CANCELLED);
     }
 
     @Test
-    void canCreateVacationRequestOnWeekend() {
+    void canCreateLeaveRequestOnWeekend() {
         LocalDate sunday = LocalDate.of(2025, 9, 7);
 
-        VacationRequestDto response = vacationService.createVacationRequest(
-                employee.getEmployeeId(), sunday, sunday, "休日申請");
+        LeaveRequestDto response = leaveRequestService.createLeaveRequest(
+                employee.getEmployeeId(),
+                LeaveType.PAID_LEAVE,
+                LeaveTimeUnit.FULL_DAY,
+                sunday,
+                sunday,
+                "休日申請");
 
         assertThat(response.isSuccess()).isTrue();
-        VacationRequestDto.VacationData data = (VacationRequestDto.VacationData) response.getData();
-        assertThat(data.getDays()).isEqualTo(1);
+        LeaveRequestDto.LeaveData data = (LeaveRequestDto.LeaveData) response.getData();
+        assertThat(data.getDays().intValue()).isEqualTo(1);
         assertThat(data.getStartDate()).isEqualTo(sunday);
         assertThat(data.getEndDate()).isEqualTo(sunday);
     }
 
     @Test
-    void canCreateVacationRequestIncludingWeekendCountsCalendarDays() {
+    void canCreateLeaveRequestIncludingWeekendCountsCalendarDays() {
         LocalDate start = LocalDate.of(2025, 9, 4); // 木曜日
         LocalDate end = LocalDate.of(2025, 9, 7);   // 日曜日まで
 
-        VacationRequestDto response = vacationService.createVacationRequest(
-                employee.getEmployeeId(), start, end, "長期休暇");
+        LeaveRequestDto response = leaveRequestService.createLeaveRequest(
+                employee.getEmployeeId(),
+                LeaveType.PAID_LEAVE,
+                LeaveTimeUnit.FULL_DAY,
+                start,
+                end,
+                "長期休暇");
 
-        VacationRequestDto.VacationData data = (VacationRequestDto.VacationData) response.getData();
-        assertThat(data.getDays()).isEqualTo(4);
+        LeaveRequestDto.LeaveData data = (LeaveRequestDto.LeaveData) response.getData();
+        assertThat(data.getDays().intValue()).isEqualTo(4);
         assertThat(data.getStartDate()).isEqualTo(start);
         assertThat(data.getEndDate()).isEqualTo(end);
     }

@@ -250,7 +250,7 @@
                             <a class="nav-link" href="/history" id="historyNavLink">勤怠履歴</a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="/vacation" id="vacationNavLink">有給申請</a>
+                            <a class="nav-link" href="/vacation" id="vacationNavLink">休暇申請</a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="/adjustment" id="adjustmentNavLink">打刻修正</a>
@@ -260,7 +260,7 @@
                             <a class="nav-link" href="/admin/approvals" id="adminApprovalsNavLink">打刻修正</a>
                         </li>
                         <li class="nav-item" id="adminVacationManagementNavItem" style="display: none;">
-                            <a class="nav-link" href="/admin/vacation-management" id="adminVacationManagementNavLink">有給承認</a>
+                            <a class="nav-link" href="/admin/vacation-management" id="adminVacationManagementNavLink">休暇管理</a>
                         </li>
                         <li class="nav-item" id="adminEmployeesNavItem" style="display: none;">
                             <a class="nav-link" href="/admin/employees" id="adminEmployeesNavLink">社員管理</a>
@@ -496,7 +496,7 @@
                 <div class="modal-dialog modal-lg">
                     <div class="modal-content">
                         <div class="modal-header">
-                            <h5 class="modal-title" id="vacationDetailModalLabel">有給申請詳細</h5>
+                            <h5 class="modal-title" id="vacationDetailModalLabel">休暇申請詳細</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body">
@@ -504,6 +504,14 @@
                                 <div class="col-12">
                                     <h6>申請情報</h6>
                                     <table class="table table-sm">
+                                        <tr>
+                                            <td><strong>休暇種別:</strong></td>
+                                            <td id="vacationDetailType">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>取得単位:</strong></td>
+                                            <td id="vacationDetailTimeUnit">-</td>
+                                        </tr>
                                         <tr>
                                             <td><strong>開始日:</strong></td>
                                             <td id="vacationDetailStartDate">-</td>
@@ -544,18 +552,30 @@
             </div>
 
 
-            <!-- 有給申請画面 -->
+            <!-- 休暇申請画面 -->
             <div id="vacationScreen" class="screen-container">
                 <div class="card">
                     <div class="card-header">
-                        <h5 class="mb-0" id="vacationFormTitle">有給申請</h5>
+                        <h5 class="mb-0" id="vacationFormTitle">休暇申請</h5>
                     </div>
                     <div class="card-body">
                         <div class="mb-3">
-                            <strong>残有給日数: <span id="remainingVacationDays">--日</span></strong>
+                            <strong>残休暇日数</strong>
+                            <div id="vacationBalanceSummary" class="small text-muted mt-2">--</div>
                         </div>
                         <hr>
                         <form id="vacationForm">
+                            <div class="mb-3">
+                                <label for="vacationTypeSelect" class="form-label">休暇種別 <span class="text-danger">*</span></label>
+                                <select class="form-select" id="vacationTypeSelect" required>
+                                    <option value="PAID_LEAVE:FULL_DAY">有休（全日）</option>
+                                    <option value="PAID_LEAVE:HALF_AM">半休（AM）</option>
+                                    <option value="PAID_LEAVE:HALF_PM">半休（PM）</option>
+                                    <option value="SUMMER:FULL_DAY">夏季休暇</option>
+                                    <option value="WINTER:FULL_DAY">冬季休暇</option>
+                                    <option value="SPECIAL:FULL_DAY">特別休暇</option>
+                                </select>
+                            </div>
                             <div class="mb-3">
                                 <label for="vacationStartDate" class="form-label">開始日: <span class="text-danger">*</span></label>
                                 <input type="date" class="form-control" id="vacationStartDate" required>
@@ -564,9 +584,12 @@
                                 <label for="vacationEndDate" class="form-label">終了日: <span class="text-danger">*</span></label>
                                 <input type="date" class="form-control" id="vacationEndDate" required>
                             </div>
+                            <div id="vacationSpecialNotice" class="d-none mb-3"></div>
                             <div class="mb-3">
-                                <label for="vacationReason" class="form-label">理由: <span class="text-danger">*</span></label>
-                                <textarea class="form-control" id="vacationReason" rows="3" placeholder="" required></textarea>
+                                <label for="vacationReason" class="form-label" id="vacationReasonLabel">
+                                    理由 <span class="text-danger" id="vacationReasonRequiredMark">*</span>
+                                </label>
+                                <textarea class="form-control" id="vacationReason" rows="3" placeholder="休暇理由を入力してください" required></textarea>
                             </div>
                             <div class="d-flex gap-2">
                                 <button type="submit" class="btn btn-primary">申請する</button>
@@ -714,30 +737,113 @@
             
 
 
-            <!-- 有給承認画面 -->
+            <!-- 休暇管理画面 -->
             <div id="adminVacationManagementScreen" class="screen-container">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0">有給承認</h5>
+                <div class="row g-3">
+                    <div class="col-xl-7">
+                        <div class="card h-100">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">休暇申請の承認</h5>
+                                <button class="btn btn-sm btn-outline-secondary" id="refreshLeaveRequestsButton">再読み込み</button>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-striped table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>社員名</th>
+                                                <th>種別</th>
+                                                <th>期間</th>
+                                                <th>単位</th>
+                                                <th>状態</th>
+                                                <th>操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="vacationManagementTableBody">
+                                            <tr>
+                                                <td colspan="6" class="text-center text-muted">データを読み込み中...</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-striped table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>社員名</th>
-                                        <th>対象日</th>
-                                        <th>理由</th>
-                                        <th>状態</th>
-                                        <th>操作</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="vacationManagementTableBody">
-                                    <tr>
-                                        <td colspan="5" class="text-center text-muted">データを読み込み中...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                    <div class="col-xl-5">
+                        <div class="card mb-3">
+                            <div class="card-header">
+                                <h5 class="mb-0">休暇付与</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="leaveGrantForm">
+                                    <div class="mb-3">
+                                        <label for="leaveGrantType" class="form-label">休暇種別 <span class="text-danger">*</span></label>
+                                        <select id="leaveGrantType" class="form-select" required>
+                                            <option value="SUMMER">夏季休暇</option>
+                                            <option value="WINTER">冬季休暇</option>
+                                            <option value="SPECIAL">特別休暇</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3" id="leaveGrantDaysGroup">
+                                        <label for="leaveGrantDays" class="form-label">付与日数 <span class="text-danger">*</span></label>
+                                        <input type="number" step="0.5" min="0.5" class="form-control" id="leaveGrantDays" placeholder="例: 3" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="leaveGrantDate" class="form-label">付与開始日 <span class="text-danger">*</span></label>
+                                        <input type="date" class="form-control" id="leaveGrantDate" required>
+                                    </div>
+                                    <div class="mb-3" id="leaveGrantExpiryGroup">
+                                        <label for="leaveGrantExpiry" class="form-label">有効期限</label>
+                                        <input type="date" class="form-control" id="leaveGrantExpiry">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="leaveGrantScope" class="form-label">付与対象 <span class="text-danger">*</span></label>
+                                        <select id="leaveGrantScope" class="form-select" required>
+                                            <option value="ALL">全社員</option>
+                                            <option value="INDIVIDUAL">指定社員</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3" id="leaveGrantEmployeeSelectWrapper" style="display: none;">
+                                        <label for="leaveGrantEmployeeSelect" class="form-label">対象社員（複数選択可）</label>
+                                        <select id="leaveGrantEmployeeSelect" class="form-select" multiple size="6"></select>
+                                    </div>
+                                    <div class="mb-3" id="leaveGrantSpecialDatesWrapper" style="display: none;">
+                                        <label class="form-label">特別休暇対象日 <span class="text-danger">*</span></label>
+                                        <div class="d-flex gap-2 mb-2">
+                                            <input type="date" class="form-control" id="leaveGrantSpecialDateInput">
+                                            <button type="button" class="btn btn-outline-secondary" id="addSpecialDateButton">追加</button>
+                                        </div>
+                                        <div id="leaveGrantSpecialDateList" class="small text-muted">未指定</div>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary w-100">付与する</button>
+                                </form>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">休暇残数</h5>
+                                <button class="btn btn-sm btn-outline-secondary" id="refreshLeaveBalancesButton">更新</button>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>社員名</th>
+                                                <th>有休</th>
+                                                <th>夏季</th>
+                                                <th>冬季</th>
+                                                <th>特別</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="leaveBalanceTableBody">
+                                            <tr>
+                                                <td colspan="5" class="text-center text-muted">データを読み込み中...</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

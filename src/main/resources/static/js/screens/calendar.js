@@ -6,6 +6,20 @@ const CALENDAR_RANGE = {
     end: { year: 2027, month: 11 }
 };
 
+
+const LEAVE_TYPE_LABELS = {
+    PAID_LEAVE: '有休',
+    SUMMER: '夏季',
+    WINTER: '冬季',
+    SPECIAL: '特別'
+};
+
+const LEAVE_TIME_UNIT_MARKERS = {
+    FULL_DAY: '',
+    HALF_AM: '半休AM',
+    HALF_PM: '半休PM'
+};
+
 class CalendarScreen {
     constructor() {
         this.calendarGrid = null;
@@ -76,7 +90,7 @@ class CalendarScreen {
         try {
             // 勤怠データ読み込み
             await this.loadAttendanceData();
-            // 有給申請データ読み込み
+            // 休暇申請データ読み込み
             await this.loadVacationRequests();
             // 打刻修正申請データ読み込み
             await this.loadAdjustmentRequests();
@@ -107,31 +121,35 @@ class CalendarScreen {
     }
 
     /**
-     * 有給申請データ読み込み
+     * 休暇申請データ読み込み
      */
     async loadVacationRequests() {
         if (!window.currentEmployeeId) return;
 
         try {
-            const response = await fetch(`/api/vacation/requests?employeeId=${window.currentEmployeeId}&year=${this.currentYear}&month=${this.currentMonth + 1}`, {
+            const response = await fetch(`/api/leave/requests/${window.currentEmployeeId}`, {
                 credentials: 'include'
             });
 
             if (response.ok) {
                 const data = await response.json();
                 const rawList = Array.isArray(data.data) ? data.data : [];
-                this.vacationRequests = this.normalizeVacationEntries(rawList);
+                const normalized = this.normalizeVacationEntries(rawList);
+                this.vacationRequests = normalized.filter((entry) => {
+                    const date = this.parseDateString(entry.date);
+                    return date && date.getFullYear() === this.currentYear && date.getMonth() === this.currentMonth;
+                });
             } else {
                 this.vacationRequests = [];
             }
         } catch (error) {
-            console.error('有給申請データ読み込みエラー:', error);
+            console.error('休暇申請データ読み込みエラー:', error);
             this.vacationRequests = [];
         }
     }
 
     /**
-     * APIから取得した有給データを日別・営業日ベースに正規化
+     * APIから取得した休暇データを日別ベースに正規化
      */
     normalizeVacationEntries(entries) {
         if (!Array.isArray(entries)) {
@@ -253,8 +271,20 @@ class CalendarScreen {
                 // バッジ表示
                 let badges = '';
                 if (vacationRequest) {
-                    const statusClass = vacationRequest.status === 'APPROVED' ? 'bg-success' : 'bg-warning';
-                    badges += `<span class="badge ${statusClass} badge-sm">有給${vacationRequest.status === 'APPROVED' ? '承認済' : '申請中'}</span>`;
+                    const statusUpper = (vacationRequest.status || '').toUpperCase();
+                    let statusClass = 'bg-warning';
+                    let statusLabel = '申請中';
+                    if (statusUpper === 'APPROVED') {
+                        statusClass = 'bg-success';
+                        statusLabel = '承認済';
+                    } else if (statusUpper === 'REJECTED') {
+                        statusClass = 'bg-danger';
+                        statusLabel = '却下';
+                    }
+                    const typeLabel = LEAVE_TYPE_LABELS[vacationRequest.leaveType] || '休暇';
+                    const unitMarker = LEAVE_TIME_UNIT_MARKERS[vacationRequest.timeUnit] || '';
+                    const badgeText = `${typeLabel}${unitMarker ? ` ${unitMarker}` : ''} ${statusLabel}`;
+                    badges += `<span class="badge ${statusClass} badge-sm">${badgeText}</span>`;
                 }
                 if (adjustmentRequest) {
                     let statusClass, statusText;
@@ -370,7 +400,7 @@ class CalendarScreen {
     }
 
     /**
-     * 指定日の有給申請取得
+     * 指定日の休暇申請取得
      */
     getVacationRequestForDate(dateString) {
         return this.vacationRequests.find(request => request.date === dateString);

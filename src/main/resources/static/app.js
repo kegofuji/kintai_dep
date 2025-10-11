@@ -100,7 +100,6 @@ function setupEventListeners() {
     }
     if (monthlySubmitBtn) monthlySubmitBtn.addEventListener('click', handleMonthlySubmit);
     if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
-    if (submitVacationBtn) submitVacationBtn.addEventListener('click', handleVacationSubmit);
     
     // ナビゲーションメニューのイベントリスナー
     setupNavigationListeners();
@@ -492,53 +491,6 @@ function displayAttendanceHistory(data) {
 }
 
 
-// 有給申請
-async function handleVacationSubmit() {
-    const startDate = document.getElementById('vacationStartDate').value;
-    const endDate = document.getElementById('vacationEndDate').value;
-    const reason = document.getElementById('vacationReason').value;
-    
-    if (!startDate || !endDate || !reason) {
-        showAlert('すべての項目を入力してください', 'warning');
-        return;
-    }
-    
-    if (!currentEmployeeId) {
-        showAlert('従業員IDが取得できません', 'danger');
-        return;
-    }
-    
-    try {
-        const response = await fetch('/api/vacation/request', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': csrfToken
-            },
-            credentials: 'include',
-            body: JSON.stringify({ 
-                employeeId: currentEmployeeId,
-                startDate: startDate,
-                endDate: endDate,
-                reason: reason
-            })
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            showAlert(data.message, 'success');
-            bootstrap.Modal.getInstance(document.getElementById('vacationModal')).hide();
-            vacationForm.reset();
-        } else {
-            showAlert(data.message || '有給申請に失敗しました', 'danger');
-        }
-    } catch (error) {
-        console.error('有給申請エラー:', error);
-        showAlert('有給申請処理中にエラーが発生しました', 'danger');
-    }
-}
-
 // 管理者機能: 社員一覧
 async function loadEmployees() {
     try {
@@ -561,25 +513,7 @@ async function loadEmployees() {
 }
 
 // 管理者機能: 未承認申請
-async function loadPendingVacations() {
-    try {
-        const response = await fetch('/api/admin/vacation/pending', {
-            credentials: 'include'
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            // 未承認申請をモーダルで表示
-            showPendingVacationsModal(data.data);
-        } else {
-            showAlert(data.message || '未承認申請の取得に失敗しました', 'danger');
-        }
-    } catch (error) {
-        console.error('未承認申請取得エラー:', error);
-        showAlert('未承認申請の取得中にエラーが発生しました', 'danger');
-    }
-}
+
 
 // 管理者機能: レポート出力
 async function downloadReport() {
@@ -801,7 +735,7 @@ function setupNavigationListeners() {
     
     if (vacationNavLink) {
         vacationNavLink.addEventListener('click', (e) => {
-            console.log('有給申請リンクがクリックされました');
+            console.log('休暇申請リンクがクリックされました');
             handleNavigationClick(e, {
                 path: '/vacation',
                 fallbackScreenId: 'vacationScreen',
@@ -838,7 +772,7 @@ function setupNavigationListeners() {
 
     if (adminVacationManagementNavLink) {
         adminVacationManagementNavLink.addEventListener('click', (e) => {
-            console.log('有給承認リンクがクリックされました');
+            console.log('休暇管理リンクがクリックされました');
             handleNavigationClick(e, {
                 path: '/admin/vacation-management',
                 fallbackScreenId: 'adminVacationManagementScreen',
@@ -971,88 +905,13 @@ function showEmployeeListModal(employees) {
     modal.show();
 }
 
-// 未承認申請モーダル表示
-function showPendingVacationsModal(vacations) {
-    const modalHtml = `
-        <div class="modal fade" id="pendingVacationsModal" tabindex="-1">
-            <div class="modal-dialog modal-lg">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title">未承認有給申請</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="table-responsive">
-                            <table class="table table-striped">
-                                <thead>
-                                    <tr>
-                                        <th>申請ID</th>
-                                        <th>従業員ID</th>
-                                        <th>開始日</th>
-                                        <th>終了日</th>
-                                        <th>理由</th>
-                                        <th>申請日</th>
-                                        <th>操作</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${vacations.map(vacation => `
-                                        <tr>
-                                            <td>${vacation.vacationId}</td>
-                                            <td>${vacation.employeeId}</td>
-                                            <td>${vacation.startDate}</td>
-                                            <td>${vacation.endDate}</td>
-                                            <td>${vacation.reason}</td>
-                                            <td>${vacation.createdAt}</td>
-                                            <td>
-                                                <button class="btn btn-success btn-sm me-1" onclick="approveVacation(${vacation.vacationId})">承認</button>
-                                                <button class="btn btn-danger btn-sm" onclick="rejectVacation(${vacation.vacationId})">却下</button>
-                                            </td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    // 既存のモーダルを削除
-    const existingModal = document.getElementById('pendingVacationsModal');
-    if (existingModal) {
-        existingModal.remove();
-    }
-    
-    // 新しいモーダルを追加
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    
-    // モーダルを表示
-    const modal = new bootstrap.Modal(document.getElementById('pendingVacationsModal'));
-    modal.show();
-}
 
-// 有給申請承認（admin.jsのapproveVacationRequestメソッドに統一）
-async function approveVacation(vacationId) {
-    if (window.adminScreen && window.adminScreen.approveVacationRequest) {
-        await window.adminScreen.approveVacationRequest(vacationId);
-    } else {
-        showAlert('管理者画面が初期化されていません', 'danger');
-    }
-}
 
-// 有給申請却下（admin.jsのrejectVacationRequestメソッドに統一）
-async function rejectVacation(vacationId) {
-    if (window.adminScreen && window.adminScreen.rejectVacationRequest) {
-        await window.adminScreen.rejectVacationRequest(vacationId);
-    } else {
-        showAlert('管理者画面が初期化されていません', 'danger');
-    }
-}
+// 休暇申請承認（admin.jsのapproveVacationRequestメソッドに統一）
+
+
+// 休暇申請却下（admin.jsのrejectVacationRequestメソッドに統一）
+
 
 // パスワード強度チェック機能は削除されました
 
@@ -1086,7 +945,7 @@ function showScreen(screenId) {
             setupHistoryMonthSelect();
         }
     } else if (screenId === 'vacationScreen') {
-        // 有給申請画面の初期化
+        // 休暇申請画面の初期化
         if (window.vacationScreen) {
             window.vacationScreen.init();
         }

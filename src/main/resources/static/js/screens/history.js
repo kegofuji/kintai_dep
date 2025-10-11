@@ -6,6 +6,25 @@ const HISTORY_CALENDAR_RANGE = {
     end: { year: 2027, month: 11 }
 };
 
+const LEAVE_TYPE_LABELS = {
+    PAID_LEAVE: '有休',
+    SUMMER: '夏季',
+    WINTER: '冬季',
+    SPECIAL: '特別'
+};
+
+const LEAVE_TIME_UNIT_MARKERS = {
+    FULL_DAY: '',
+    HALF_AM: '半休AM',
+    HALF_PM: '半休PM'
+};
+
+const LEAVE_TIME_UNIT_LABELS = {
+    FULL_DAY: '全日',
+    HALF_AM: '半休（AM）',
+    HALF_PM: '半休（PM）'
+};
+
 class HistoryScreen {
     constructor() {
         this.historyMonthSelect = null;
@@ -151,7 +170,7 @@ class HistoryScreen {
                 console.log('勤怠履歴データ取得失敗、空配列で継続');
             }
 
-            // 有給申請データも読み込み（履歴カレンダー用）
+            // 休暇申請データも読み込み（履歴カレンダー用）
             await this.loadVacationRequests();
 
             // 打刻修正申請データも読み込み（履歴カレンダー用）
@@ -474,7 +493,7 @@ class HistoryScreen {
 
         // デバッグ用：データ読み込み状況を確認
         console.log('=== カレンダー生成開始 ===');
-        console.log('有給申請データ:', this.vacationRequests?.length || 0, '件');
+            console.log('休暇申請データ:', this.vacationRequests?.length || 0, '件');
         console.log('打刻修正申請データ:', this.adjustmentRequests?.length || 0, '件');
         console.log('勤怠データ:', this.attendanceData?.length || 0, '件');
 
@@ -540,30 +559,44 @@ class HistoryScreen {
                 });
             }
             
-            // 有給申請状況の表示（申請がある場合のみ）
+            // 休暇申請状況の表示（申請がある場合のみ）
             if (vacationRequest) {
                 const statusUpper = (vacationRequest.status || '').toUpperCase();
                 let statusClass = 'bg-secondary';
-                let label = '申請';
+                let statusLabel = '申請';
                 switch (statusUpper) {
                     case 'APPROVED':
                         statusClass = 'bg-success';
-                        label = '承認済';
+                        statusLabel = '承認済';
                         break;
                     case 'PENDING':
                         statusClass = 'bg-warning';
-                        label = '申請中';
+                        statusLabel = '申請中';
                         break;
                     case 'REJECTED':
                         statusClass = 'bg-danger';
-                        label = '却下';
+                        statusLabel = '却下';
                         break;
                     default:
                         statusClass = 'bg-secondary';
-                        label = statusUpper || '申請';
+                        statusLabel = statusUpper || '申請';
                 }
-                const dataAttrs = `data-vacation-id="${vacationRequest.vacationId || ''}" data-status="${vacationRequest.status}" data-date="${dateString}"`;
-                badges += `<span class="badge ${statusClass} badge-sm vacation-badge clickable" ${dataAttrs} title="クリックして申請内容を確認">有給${label}</span>`;
+
+                const typeLabel = (typeof LEAVE_TYPE_LABELS !== 'undefined')
+                    ? (LEAVE_TYPE_LABELS[vacationRequest.leaveType] || '休暇')
+                    : (vacationRequest.leaveType || '休暇');
+                const unitMarker = (typeof LEAVE_TIME_UNIT_MARKERS !== 'undefined')
+                    ? (LEAVE_TIME_UNIT_MARKERS[vacationRequest.timeUnit] || '')
+                    : (vacationRequest.timeUnit || '');
+                const badgeText = `${typeLabel}${unitMarker ? ` ${unitMarker}` : ''} ${statusLabel}`;
+                const dataAttrs = [
+                    `data-vacation-id="${vacationRequest.vacationId || ''}"`,
+                    `data-status="${vacationRequest.status}"`,
+                    `data-date="${dateString}"`,
+                    `data-leave-type="${vacationRequest.leaveType || ''}"`,
+                    `data-time-unit="${vacationRequest.timeUnit || ''}"`
+                ].join(' ');
+                badges += `<span class="badge ${statusClass} badge-sm vacation-badge clickable" ${dataAttrs} title="クリックして申請内容を確認">${badgeText}</span>`;
             }
 
             // 打刻修正申請状況の表示（申請がある場合のみ）
@@ -606,7 +639,7 @@ class HistoryScreen {
         // カレンダーの日付クリックイベントを設定
         this.setupCalendarClickEvents();
         
-        // 有給バッジのクリックイベント（申請取消）
+        // 休暇バッジのクリックイベント（申請詳細）
         this.setupVacationBadgeActions();
         
         // 打刻修正バッジのクリックイベント（申請詳細表示）
@@ -834,14 +867,14 @@ class HistoryScreen {
     }
 
     /**
-     * 指定日の有給申請取得
+     * 指定日の休暇申請取得
      */
     getVacationRequestForDate(dateString) {
         return this.vacationRequests.find(request => request.date === dateString);
     }
 
     /**
-     * 有給申請データ読み込み（当月分に整形）
+     * 休暇申請データ読み込み（当月分に整形）
      */
     async loadVacationRequests() {
         if (!window.currentEmployeeId) {
@@ -850,75 +883,76 @@ class HistoryScreen {
         }
 
         try {
-            // 既存のAPI: /api/vacation/{employeeId} を利用し、フロントで月別に整形
             const response = await fetchWithAuth.handleApiCall(
-                () => fetchWithAuth.get(`/api/vacation/${window.currentEmployeeId}`),
-                '有給申請の取得に失敗しました'
+                () => fetchWithAuth.get(`/api/leave/requests/${window.currentEmployeeId}`),
+                '休暇申請の取得に失敗しました'
             );
 
-            // response は { success: true, data: [...] } 形式を想定
             const requests = (response && response.success && Array.isArray(response.data)) ? response.data : [];
 
-            // 申請を日付ごとに展開
             this.vacationRequestRawMap = new Map();
             this.activeVacationDates = new Set();
+
             const expanded = [];
-            requests.forEach(req => {
-                if (!req.startDate || !req.endDate) return;
-
-                const requestId = (req.vacationId ?? req.id);
-                const requestIdStr = requestId !== undefined && requestId !== null
-                    ? String(requestId)
-                    : '';
-
-                if (requestIdStr) {
-                    this.vacationRequestRawMap.set(requestIdStr, req);
+            requests.forEach((req) => {
+                if (!req.startDate || !req.endDate) {
+                    return;
                 }
+
+                const requestId = req.leaveRequestId ?? req.id ?? req.vacationId;
+                if (requestId === undefined || requestId === null) {
+                    return;
+                }
+
+                const requestIdStr = String(requestId);
+                this.vacationRequestRawMap.set(requestIdStr, req);
 
                 try {
                     const start = this.parseDateString(req.startDate);
                     const end = this.parseDateString(req.endDate);
                     if (!start || !end) {
-                        console.warn('有給申請の日付を解析できませんでした:', req);
+                        console.warn('休暇申請の日付を解析できませんでした:', req);
                         return;
                     }
 
-                    // 範囲を1日ずつ展開（全休想定）
+                    const status = (req.status || 'PENDING').toUpperCase();
+                    if (status === 'CANCELLED') {
+                        return;
+                    }
+
                     for (let d = new Date(start); d.getTime() <= end.getTime(); d.setDate(d.getDate() + 1)) {
                         const current = new Date(d);
                         const y = current.getFullYear();
-                        const m = current.getMonth(); // 0-based
-                        // 表示中の年月のみ保持
+                        const m = current.getMonth();
                         if (y === this.currentYear && m === this.currentMonth) {
-                            const status = req.status || 'PENDING';
-                            if ((status || '').toUpperCase() === 'CANCELLED') {
-                                continue;
-                            }
+                            const dateKey = this.formatDateString(current);
                             expanded.push({
-                                date: this.formatDateString(current),
-                                status: status,
+                                date: dateKey,
+                                status,
                                 vacationId: requestIdStr,
+                                leaveType: req.leaveType || 'PAID_LEAVE',
+                                timeUnit: req.timeUnit || 'FULL_DAY',
+                                days: req.days ?? req.requestDays ?? null,
                                 request: req
                             });
-                            this.activeVacationDates.add(this.formatDateString(current));
+                            this.activeVacationDates.add(dateKey);
                         }
                     }
                 } catch (dateError) {
-                    console.warn('有給申請の日付解析エラー:', dateError, req);
+                    console.warn('休暇申請の日付解析エラー:', dateError, req);
                 }
             });
 
-            console.log('当月の有給申請データ:', expanded);
+            console.log('当月の休暇申請データ:', expanded);
             this.vacationRequests = expanded;
         } catch (error) {
-            console.error('有給申請データ読み込みエラー:', error);
+            console.error('休暇申請データ読み込みエラー:', error);
             this.vacationRequests = [];
-            // エラーを再スローしない（画面の表示を継続するため）
         }
     }
 
     /**
-     * 有給バッジのクリックアクション（申請取消）
+     * 休暇バッジのクリックアクション
      */
     setupVacationBadgeActions() {
         if (!this.calendarGrid) return;
@@ -984,7 +1018,7 @@ class HistoryScreen {
                         }
                         const dateKey = this.formatDateString(d);
                         if (this.activeVacationDates.has(dateKey)) {
-                            console.log('有給申請と重複するため打刻修正申請を非表示:', req);
+                            console.log('休暇申請と重複するため打刻修正申請を非表示:', req);
                             return;
                         }
                         filtered.push({
@@ -1532,7 +1566,7 @@ class HistoryScreen {
     }
 
     /**
-     * 有給申請詳細表示
+     * 休暇申請詳細表示
      */
     async showVacationDetail(dateString, vacationId) {
         if (!window.currentEmployeeId) {
@@ -1550,14 +1584,14 @@ class HistoryScreen {
         try {
             if (!request) {
                 const response = await fetchWithAuth.handleApiCall(
-                    () => fetchWithAuth.get(`/api/vacation/${window.currentEmployeeId}`),
-                    '有給申請の取得に失敗しました'
+                    () => fetchWithAuth.get(`/api/leave/requests/${window.currentEmployeeId}`),
+                    '休暇申請の取得に失敗しました'
                 );
 
                 const items = (response && response.success && Array.isArray(response.data)) ? response.data : [];
                 this.vacationRequestRawMap = new Map();
                 items.forEach(item => {
-                    const id = item.vacationId ?? item.id;
+                    const id = item.leaveRequestId ?? item.id ?? item.vacationId;
                     if (id === undefined || id === null) return;
                     const idStr = String(id);
                     this.vacationRequestRawMap.set(idStr, item);
@@ -1580,7 +1614,7 @@ class HistoryScreen {
                 }
             }
         } catch (error) {
-            console.error('有給申請詳細取得エラー:', error);
+            console.error('休暇申請詳細取得エラー:', error);
             this.showAlert(error.message || '申請詳細の取得に失敗しました', 'danger');
             return;
         }
@@ -1592,7 +1626,7 @@ class HistoryScreen {
 
         const modal = document.getElementById('vacationDetailModal');
         if (!modal) {
-            console.error('有給申請詳細モーダルが見つかりません');
+            console.error('休暇申請詳細モーダルが見つかりません');
             return;
         }
 
@@ -1606,9 +1640,24 @@ class HistoryScreen {
             return `${year}/${month}/${day}`;
         };
 
+        const leaveTypeLabel = LEAVE_TYPE_LABELS[request.leaveType] || request.leaveType || '休暇';
+        const timeUnitLabel = LEAVE_TIME_UNIT_LABELS[request.timeUnit] || (LEAVE_TIME_UNIT_MARKERS[request.timeUnit] ? `半休（${LEAVE_TIME_UNIT_MARKERS[request.timeUnit]}）` : '全日');
+        const daysValue = Number(request.days);
+        const daysText = Number.isFinite(daysValue)
+            ? `${(daysValue % 1 === 0 ? daysValue : daysValue.toFixed(1))}日`
+            : (request.days != null ? `${request.days}日` : '-');
+
+        const typeField = document.getElementById('vacationDetailType');
+        if (typeField) {
+            typeField.textContent = leaveTypeLabel;
+        }
+        const unitField = document.getElementById('vacationDetailTimeUnit');
+        if (unitField) {
+            unitField.textContent = timeUnitLabel;
+        }
         document.getElementById('vacationDetailStartDate').textContent = formatDate(request.startDate);
         document.getElementById('vacationDetailEndDate').textContent = formatDate(request.endDate);
-        document.getElementById('vacationDetailDays').textContent = request.days != null ? `${request.days}日` : '-';
+        document.getElementById('vacationDetailDays').textContent = daysText;
 
         const statusElement = document.getElementById('vacationDetailStatus');
         const statusMap = {
@@ -1638,11 +1687,13 @@ class HistoryScreen {
         this.currentVacationDetail = {
             request,
             dateString,
-            fallbackId: targetId || (request.vacationId != null ? String(request.vacationId) : null)
+            fallbackId: targetId || ((request.leaveRequestId ?? request.id ?? request.vacationId) != null
+                ? String(request.leaveRequestId ?? request.id ?? request.vacationId)
+                : null)
         };
 
         if (this.vacationCancelButton) {
-            const reqId = request.vacationId ?? request.id;
+            const reqId = request.leaveRequestId ?? request.id ?? request.vacationId;
             const canCancel = (request.status === 'PENDING' || request.status === 'APPROVED') && reqId !== undefined && reqId !== null;
             if (canCancel) {
                 this.vacationCancelButton.style.display = 'inline-block';
@@ -1670,7 +1721,7 @@ class HistoryScreen {
     }
 
     /**
-     * 有給申請の取消処理
+     * 休暇申請の取消処理
      */
     async handleVacationCancel() {
         if (!this.vacationCancelButton) return;
@@ -1706,14 +1757,14 @@ class HistoryScreen {
         const status = vacationDetail?.request?.status || '';
         const isApproved = status === 'APPROVED';
         const confirmMessage = isApproved
-            ? 'この有給申請は既に承認済です。取消すると申請が無かったものとして扱われます。取消しますか？'
-            : 'この有給申請を取消しますか？';
+            ? 'この休暇申請は既に承認済です。取消すると申請が無かったものとして扱われます。取消しますか？'
+            : 'この休暇申請を取消しますか？';
 
         const confirmHandler = window.employeeDialog?.confirm;
         let confirmed = false;
         if (confirmHandler) {
             const result = await confirmHandler({
-                title: '有給申請の取消',
+                title: '休暇申請の取消',
                 message: confirmMessage,
                 confirmLabel: '取消する',
                 cancelLabel: 'キャンセル'
@@ -1733,18 +1784,18 @@ class HistoryScreen {
         try {
             this.vacationCancelButton.disabled = true;
             const cancelPayload = {
-                vacationId: Number(normalizedId),
+                leaveRequestId: Number(normalizedId),
                 employeeId: window.currentEmployeeId
             };
 
             const data = await this.invokeVacationCancel(cancelPayload, normalizedId);
 
-            this.showAlert(data.message || '有給申請を取消しました', 'success');
+            this.showAlert(data?.message || '休暇申請を取消しました', 'success');
             refreshRequired = true;
             closeModal = true;
         } catch (error) {
-            console.error('有給申請取消エラー:', error);
-            const message = error.message || '有給申請の取消に失敗しました';
+            console.error('休暇申請取消エラー:', error);
+            const message = error.message || '休暇申請の取消に失敗しました';
             const isMissing = message.includes('見つかりません') || message.includes('存在しません');
             const isStateError = message.includes('取消できない');
 
@@ -1776,7 +1827,7 @@ class HistoryScreen {
                 try {
                     await this.loadCalendarData(true); // 取消後はカレンダーを再生成
                 } catch (refreshError) {
-                    console.error('有給申請取消後の再描画に失敗しました:', refreshError);
+                    console.error('休暇申請取消後の再描画に失敗しました:', refreshError);
                 }
             }
         }
@@ -1862,7 +1913,7 @@ class HistoryScreen {
     }
 
     /**
-     * 有給申請の再申請
+     * 休暇申請の再申請
      */
     handleVacationResubmit() {
         if (this.vacationResubmitButton) {
@@ -1889,7 +1940,9 @@ class HistoryScreen {
                 window.vacationScreen.prefillForm({
                     startDate: detail.startDate,
                     endDate: detail.endDate,
-                    reason: detail.reason || ''
+                    reason: detail.reason || '',
+                    leaveType: detail.leaveType || 'PAID_LEAVE',
+                    timeUnit: detail.timeUnit || 'FULL_DAY'
                 });
             }
         }, 150);
@@ -1996,18 +2049,18 @@ class HistoryScreen {
     }
 
     /**
-     * 有給取消API呼び出し
+     * 休暇取消API呼び出し
      */
     async invokeVacationCancel(payload, fallbackId) {
-        const primaryEndpoint = '/api/cancel/vacation';
-        const fallbackEndpoint = `/api/vacation/${fallbackId}/cancel`;
+        const primaryEndpoint = '/api/cancel/leave';
+        const fallbackEndpoint = `/api/leave/requests/${fallbackId}/cancel`;
 
         const tryRequest = async (url, body) => {
             const response = await fetchWithAuth.post(url, body);
             if (response.ok) {
                 const data = await fetchWithAuth.parseJson(response);
                 if (data && data.success === false) {
-                    throw new Error(data.message || '有給申請の取消に失敗しました');
+                    throw new Error(data.message || '休暇申請の取消に失敗しました');
                 }
                 return data;
             }
@@ -2019,7 +2072,7 @@ class HistoryScreen {
                 return null;
             }
 
-            throw new Error(message || `有給申請の取消に失敗しました (HTTP ${response.status})`);
+            throw new Error(message || `休暇申請の取消に失敗しました (HTTP ${response.status})`);
         };
 
         const primaryResult = await tryRequest(primaryEndpoint, payload);
@@ -2032,7 +2085,7 @@ class HistoryScreen {
             return fallbackResult;
         }
 
-        throw new Error('有給申請の取消に失敗しました');
+        throw new Error('休暇申請の取消に失敗しました');
     }
 
     combineDateTime(dateText, timeText) {

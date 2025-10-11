@@ -1,6 +1,25 @@
 /**
  * 管理者画面モジュール
  */
+const LEAVE_TYPE_LABELS = {
+    PAID_LEAVE: '有休',
+    SUMMER: '夏季休暇',
+    WINTER: '冬季休暇',
+    SPECIAL: '特別休暇'
+};
+
+const LEAVE_TIME_UNIT_LABELS = {
+    FULL_DAY: '全日',
+    HALF_AM: '半休（AM）',
+    HALF_PM: '半休（PM）'
+};
+
+const LEAVE_TIME_UNIT_MARKERS = {
+    FULL_DAY: '',
+    HALF_AM: 'AM',
+    HALF_PM: 'PM'
+};
+
 class AdminScreen {
     constructor() {
         this.employeesTableBody = null;
@@ -13,6 +32,23 @@ class AdminScreen {
         this.reportMonthSelect = null;
         this.generateReportBtn = null;
         this.vacationManagementTableBody = null;
+        this.refreshLeaveRequestsButton = null;
+        this.leaveGrantForm = null;
+        this.leaveGrantTypeSelect = null;
+        this.leaveGrantDaysInput = null;
+        this.leaveGrantDateInput = null;
+        this.leaveGrantExpiryInput = null;
+        this.leaveGrantScopeSelect = null;
+        this.leaveGrantEmployeeWrapper = null;
+        this.leaveGrantEmployeeSelect = null;
+        this.leaveGrantSpecialDatesWrapper = null;
+        this.leaveGrantSpecialDateInput = null;
+        this.leaveGrantSpecialDateList = null;
+        this.leaveGrantAddDateButton = null;
+        this.leaveGrantDaysGroup = null;
+        this.leaveGrantExpiryGroup = null;
+        this.leaveBalanceTableBody = null;
+        this.refreshLeaveBalancesButton = null;
         this.monthlySubmissionsTableBody = null;
         this.monthlySubmissionStatusFilter = null;
         this.approvalConfirmModal = null;
@@ -22,6 +58,9 @@ class AdminScreen {
         this.approvalConfirmReasonInput = null;
         this.approvalConfirmButton = null;
         this.approvalCancelButton = null;
+        this.leaveGrantSelectedDates = [];
+        this.employeeCache = null;
+        this.selectedGrantEmployees = [];
     }
 
     /**
@@ -228,8 +267,8 @@ class AdminScreen {
                     // ユーザーAPIだが管理者でも参照用に呼び出し（認可はサーバ側ポリシーに従う）
                     fetchWithAuth
                         .handleApiCall(
-                            () => fetchWithAuth.get(`/api/vacation/${employeeId}`),
-                            '有給申請の取得に失敗しました'
+                            () => fetchWithAuth.get(`/api/leave/requests/${employeeId}`),
+                            '休暇申請の取得に失敗しました'
                         )
                         .catch(() => null),
                     fetchWithAuth
@@ -240,22 +279,28 @@ class AdminScreen {
                         .catch(() => null)
                 ]);
 
-                // 有給を対象年月に整形（日付ごとに展開）
-                if (Array.isArray(vacationsResp)) {
+                // 休暇を対象年月に整形（日付ごとに展開）
+                const vacationList = Array.isArray(vacationsResp?.data)
+                    ? vacationsResp.data
+                    : Array.isArray(vacationsResp)
+                        ? vacationsResp
+                        : [];
+                if (vacationList.length > 0) {
                     const y = Number(year);
                     const m = Number(month) - 1; // 0-based
-                    vacationsResp.forEach(v => {
+                    vacationList.forEach(v => {
                         if (!v.startDate || !v.endDate) return;
                         const start = new Date(v.startDate);
                         const end = new Date(v.endDate);
+                        const statusUpper = (v.status || 'PENDING').toUpperCase();
+                        if (statusUpper === 'CANCELLED' || statusUpper === 'REJECTED') {
+                            return;
+                        }
                         for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
                             if (d.getFullYear() === y && d.getMonth() === m) {
-                                const status = v.status || 'PENDING';
-                                if (status !== 'CANCELLED' && status !== 'REJECTED') {
-                                    const mm = String(d.getMonth() + 1).padStart(2, '0');
-                                    const dd = String(d.getDate()).padStart(2, '0');
-                                    vacationByDate.set(`${d.getFullYear()}-${mm}-${dd}`, status);
-                                }
+                                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                                const dd = String(d.getDate()).padStart(2, '0');
+                                vacationByDate.set(`${d.getFullYear()}-${mm}-${dd}`, statusUpper);
                             }
                         }
                     });
@@ -300,7 +345,7 @@ class AdminScreen {
                 if (vacationStatus) {
                     const isApproved = vacationStatus === 'APPROVED';
                     const badgeClass = isApproved ? 'bg-success' : 'bg-warning';
-                    const label = isApproved ? '有給承認済' : '有給申請中';
+                    const label = isApproved ? '休暇管理済' : '休暇申請中';
                     badgesHtml += `<div><span class="badge ${badgeClass} badge-sm">${label}</span></div>`;
                 }
                 const adjStatus = adjustmentByDate.get(key);
@@ -388,16 +433,17 @@ class AdminScreen {
     }
 
     /**
-     * 有給承認・付与調整画面初期化
+     * 休暇管理・付与調整画面初期化
      */
     initVacationManagement() {
         this.initializeVacationManagementElements();
         // 承認モーダルを共有するため承認要素も初期化
         this.initializeApprovalElements();
-        // 他タブを経由せずに直接有給管理を開いた場合でもボタンが機能するようにリスナーをセット
+        // 他タブを経由せずに直接休暇管理を開いた場合でもボタンが機能するようにリスナーをセット
         this.setupApprovalEventListeners();
         this.setupVacationManagementEventListeners();
         this.loadVacationManagementData();
+        this.loadLeaveBalances();
     }
 
     /**
@@ -437,10 +483,27 @@ class AdminScreen {
     }
 
     /**
-     * 有給管理関連要素の初期化
+     * 休暇管理関連要素の初期化
      */
     initializeVacationManagementElements() {
         this.vacationManagementTableBody = document.getElementById('vacationManagementTableBody');
+        this.refreshLeaveRequestsButton = document.getElementById('refreshLeaveRequestsButton');
+        this.leaveGrantForm = document.getElementById('leaveGrantForm');
+        this.leaveGrantTypeSelect = document.getElementById('leaveGrantType');
+        this.leaveGrantDaysInput = document.getElementById('leaveGrantDays');
+        this.leaveGrantDateInput = document.getElementById('leaveGrantDate');
+        this.leaveGrantExpiryInput = document.getElementById('leaveGrantExpiry');
+        this.leaveGrantScopeSelect = document.getElementById('leaveGrantScope');
+        this.leaveGrantEmployeeWrapper = document.getElementById('leaveGrantEmployeeSelectWrapper');
+        this.leaveGrantEmployeeSelect = document.getElementById('leaveGrantEmployeeSelect');
+        this.leaveGrantSpecialDatesWrapper = document.getElementById('leaveGrantSpecialDatesWrapper');
+        this.leaveGrantSpecialDateInput = document.getElementById('leaveGrantSpecialDateInput');
+        this.leaveGrantSpecialDateList = document.getElementById('leaveGrantSpecialDateList');
+        this.leaveGrantAddDateButton = document.getElementById('addSpecialDateButton');
+        this.leaveGrantDaysGroup = document.getElementById('leaveGrantDaysGroup');
+        this.leaveGrantExpiryGroup = document.getElementById('leaveGrantExpiryGroup');
+        this.leaveBalanceTableBody = document.getElementById('leaveBalanceTableBody');
+        this.refreshLeaveBalancesButton = document.getElementById('refreshLeaveBalancesButton');
     }
 
     /**
@@ -536,10 +599,10 @@ class AdminScreen {
     }
 
     /**
-     * 有給管理イベントリスナー設定
+     * 休暇管理イベントリスナー設定
      */
     setupVacationManagementEventListeners() {
-        // 有給管理のイベントリスナーは必要に応じて追加
+        // 休暇管理のイベントリスナーは必要に応じて追加
     }
 
     /**
@@ -560,18 +623,21 @@ class AdminScreen {
             );
 
             if (data.success) {
-                this.displayEmployees(data.data);
+                this.employeeCache = Array.isArray(data.data) ? data.data : [];
+                this.displayEmployees(this.employeeCache);
                 // 社員一覧更新後に次の社員番号も更新
                 this.updateNextEmployeeNumber();
             } else {
                 // フォールバック: emp1 のみ表示
                 const mockData = this.generateMockEmployeeData();
+                this.employeeCache = mockData;
                 this.displayEmployees(mockData);
             }
         } catch (error) {
             console.error('社員一覧読み込みエラー:', error);
             // エラー時も emp1 のみ
             const mockData = this.generateMockEmployeeData();
+            this.employeeCache = mockData;
             this.displayEmployees(mockData);
         }
     }
@@ -810,51 +876,40 @@ class AdminScreen {
     }
 
     /**
-     * 有給管理データ読み込み
+     * 休暇管理データ読み込み
      */
     async loadVacationManagementData() {
         if (!this.vacationManagementTableBody) return;
 
-        this.setTableState(this.vacationManagementTableBody, 5, 'データを読み込み中...', 'text-muted');
+        this.setTableState(this.vacationManagementTableBody, 6, 'データを読み込み中...', 'text-muted');
 
         try {
-            const statuses = ['PENDING', 'APPROVED', 'REJECTED'];
-            const responses = await Promise.all(
-                statuses.map(status =>
-                    fetchWithAuth
-                        .handleApiCall(
-                            () => fetchWithAuth.get(`/api/admin/vacation/status/${status}`),
-                            `有給申請（${status}）の取得に失敗しました`
-                        )
-                        .catch(() => ({ success: false, data: [] }))
-                )
+            const response = await fetchWithAuth.handleApiCall(
+                () => fetchWithAuth.get('/api/admin/leave/requests/pending'),
+                '休暇申請の取得に失敗しました'
             );
 
-            const list = [];
-            statuses.forEach((status, index) => {
-                const payload = responses[index];
-                if (!payload?.success || !Array.isArray(payload.data)) return;
-                payload.data.forEach(item => {
-                    list.push({
-                        vacationId: item.vacationId,
-                        employeeName: this.getDisplayEmployeeName(item),
-                        startDate: item.startDate,
-                        endDate: item.endDate,
-                        reason: item.reason || '',
-                        status: status
-                    });
-                });
-            });
+            const list = Array.isArray(response?.data) ? response.data : [];
+            const entries = list.map((item) => ({
+                vacationId: item.leaveRequestId ?? item.id ?? item.vacationId,
+                employeeName: this.getDisplayEmployeeName(item),
+                startDate: item.startDate,
+                endDate: item.endDate,
+                reason: item.reason || '',
+                leaveType: item.leaveType || 'PAID_LEAVE',
+                timeUnit: item.timeUnit || 'FULL_DAY',
+                status: item.status || 'PENDING'
+            }));
 
-            this.renderVacationApprovals(list);
+            this.renderVacationApprovals(entries);
         } catch (error) {
-            console.error('有給申請読み込みエラー:', error);
-            this.setTableState(this.vacationManagementTableBody, 5, '有給申請の取得に失敗しました', 'text-danger');
+            console.error('休暇申請読み込みエラー:', error);
+            this.setTableState(this.vacationManagementTableBody, 6, '休暇申請の取得に失敗しました', 'text-danger');
         }
     }
 
     /**
-     * 有給申請一覧を描画
+     * 休暇申請一覧を描画
      */
     renderVacationApprovals(entries) {
         if (!this.vacationManagementTableBody) return;
@@ -862,7 +917,7 @@ class AdminScreen {
         this.vacationManagementTableBody.innerHTML = '';
 
         if (!Array.isArray(entries) || entries.length === 0) {
-            this.setTableState(this.vacationManagementTableBody, 5, '現在処理すべき有給申請はありません', 'text-muted');
+            this.setTableState(this.vacationManagementTableBody, 6, '現在処理すべき休暇申請はありません', 'text-muted');
             return;
         }
 
@@ -881,15 +936,19 @@ class AdminScreen {
 
             const actionCell = isPending
                 ? `
-                        <button class="btn btn-sm btn-success me-1 approve-btn" data-request-id="${entry.vacationId}" data-type="vacation">承認</button>
-                        <button class="btn btn-sm btn-danger reject-btn" data-request-id="${entry.vacationId}" data-type="vacation">却下</button>
+                        <button class="btn btn-sm btn-success me-1 approve-btn" data-request-id="${entry.vacationId}" data-type="leave">承認</button>
+                        <button class="btn btn-sm btn-danger reject-btn" data-request-id="${entry.vacationId}" data-type="leave">却下</button>
                     `
                 : '<span class="text-muted">処理済</span>';
 
+            const typeLabel = LEAVE_TYPE_LABELS[entry.leaveType] || entry.leaveType || '-';
+            const unitLabel = LEAVE_TIME_UNIT_LABELS[entry.timeUnit] || entry.timeUnit || '-';
+
             row.innerHTML = `
                 <td>${entry.employeeName}</td>
+                <td>${typeLabel}</td>
                 <td>${this.formatDateRange(entry.startDate, entry.endDate)}</td>
-                <td>${entry.reason || '-'}</td>
+                <td>${unitLabel}</td>
                 <td>${this.translateStatus(entry.status)}</td>
                 <td>${actionCell}</td>
             `;
@@ -898,13 +957,272 @@ class AdminScreen {
         });
     }
 
+    async handleLeaveGrantSubmit() {
+        if (!this.leaveGrantForm) return;
+
+        const type = this.leaveGrantTypeSelect?.value || 'PAID_LEAVE';
+        const scope = this.leaveGrantScopeSelect?.value || 'ALL';
+        const grantedDate = this.leaveGrantDateInput?.value;
+        const expiresAt = this.leaveGrantExpiryInput?.value || null;
+        const isSpecial = type === 'SPECIAL';
+
+        let grantedDays = null;
+        if (!isSpecial) {
+            const parsed = parseFloat(this.leaveGrantDaysInput?.value ?? '0');
+            if (!Number.isFinite(parsed) || parsed <= 0) {
+                this.showAlert('付与日数を入力してください', 'warning');
+                this.leaveGrantDaysInput?.focus();
+                return;
+            }
+            grantedDays = parsed;
+        }
+
+        if (!grantedDate) {
+            this.showAlert('付与開始日を選択してください', 'warning');
+            this.leaveGrantDateInput?.focus();
+            return;
+        }
+
+        if (scope === 'INDIVIDUAL') {
+            await this.ensureEmployeeOptions();
+            const selected = Array.from(this.leaveGrantEmployeeSelect?.selectedOptions || []).map(opt => Number(opt.value));
+            if (selected.length === 0) {
+                this.showAlert('付与対象の社員を選択してください', 'warning');
+                return;
+            }
+            this.selectedGrantEmployees = selected;
+        } else {
+            this.selectedGrantEmployees = [];
+        }
+
+        if (isSpecial) {
+            if (!Array.isArray(this.leaveGrantSelectedDates) || this.leaveGrantSelectedDates.length === 0) {
+                this.showAlert('特別休暇の日付を追加してください', 'warning');
+                this.leaveGrantSpecialDateInput?.focus();
+                return;
+            }
+        }
+
+        const payload = {
+            leaveType: type,
+            scope,
+            grantedDate,
+            grantedDays: isSpecial ? 1 : grantedDays,
+            expiresAt: expiresAt || null,
+            employeeIds: scope === 'INDIVIDUAL' ? this.selectedGrantEmployees : []
+        };
+
+        if (isSpecial) {
+            payload.specificDates = [...this.leaveGrantSelectedDates];
+        }
+
+        const submitBtn = this.leaveGrantForm.querySelector('button[type="submit"]');
+        if (submitBtn) submitBtn.disabled = true;
+
+        try {
+            const response = await fetchWithAuth.handleApiCall(
+                () => fetchWithAuth.post('/api/admin/leave/grants', payload),
+                '休暇付与に失敗しました'
+            );
+
+            if (response?.success) {
+                this.showAlert(response.message || '休暇を付与しました', 'success');
+                this.leaveGrantForm.reset();
+                this.leaveGrantSelectedDates = [];
+                this.renderSpecialDateList();
+                this.handleLeaveGrantTypeChange();
+                await this.loadVacationManagementData();
+                await this.loadLeaveBalances();
+            } else {
+                const message = response?.message || '休暇付与に失敗しました';
+                this.showAlert(message, 'danger');
+            }
+        } catch (error) {
+            this.showAlert(error.message || '休暇付与に失敗しました', 'danger');
+        } finally {
+            if (submitBtn) submitBtn.disabled = false;
+        }
+    }
+
+    handleLeaveGrantTypeChange() {
+        const type = this.leaveGrantTypeSelect?.value || 'PAID_LEAVE';
+        const isSpecial = type === 'SPECIAL';
+
+        if (this.leaveGrantDaysGroup) {
+            this.leaveGrantDaysGroup.style.display = isSpecial ? 'none' : '';
+        }
+        if (this.leaveGrantDaysInput) {
+            this.leaveGrantDaysInput.required = !isSpecial;
+            if (isSpecial) {
+                this.leaveGrantDaysInput.value = '';
+            }
+        }
+
+        if (this.leaveGrantSpecialDatesWrapper) {
+            this.leaveGrantSpecialDatesWrapper.style.display = isSpecial ? '' : 'none';
+        }
+
+        if (this.leaveGrantExpiryGroup) {
+            const showExpiry = type === 'SUMMER' || type === 'WINTER';
+            this.leaveGrantExpiryGroup.style.display = showExpiry ? '' : 'none';
+            if (!showExpiry && this.leaveGrantExpiryInput) {
+                this.leaveGrantExpiryInput.value = '';
+            }
+        }
+
+        if (!isSpecial) {
+            this.leaveGrantSelectedDates = [];
+            this.renderSpecialDateList();
+        }
+    }
+
+    async handleLeaveGrantScopeChange() {
+        const scope = this.leaveGrantScopeSelect?.value || 'ALL';
+        if (this.leaveGrantEmployeeWrapper) {
+            const show = scope === 'INDIVIDUAL';
+            this.leaveGrantEmployeeWrapper.style.display = show ? '' : 'none';
+            if (show) {
+                await this.ensureEmployeeOptions();
+            } else if (this.leaveGrantEmployeeSelect) {
+                Array.from(this.leaveGrantEmployeeSelect.options).forEach(opt => opt.selected = false);
+            }
+        }
+    }
+
+    handleAddSpecialDate() {
+        if (!this.leaveGrantSpecialDateInput) return;
+        const value = this.leaveGrantSpecialDateInput.value;
+        if (!value) {
+            this.showAlert('日付を選択してください', 'warning');
+            return;
+        }
+        if (!this.leaveGrantSelectedDates.includes(value)) {
+            this.leaveGrantSelectedDates.push(value);
+            this.leaveGrantSelectedDates.sort();
+            this.renderSpecialDateList();
+        }
+        this.leaveGrantSpecialDateInput.value = '';
+    }
+
+    renderSpecialDateList() {
+        if (!this.leaveGrantSpecialDateList) return;
+        if (!this.leaveGrantSelectedDates.length) {
+            this.leaveGrantSpecialDateList.textContent = '未指定';
+            return;
+        }
+        this.leaveGrantSpecialDateList.innerHTML = this.leaveGrantSelectedDates
+            .map(date => `<span class="badge bg-secondary me-1 mb-1" data-date="${date}" role="button">${this.formatDate(date)} ×</span>`)
+            .join('');
+    }
+
+    async ensureEmployeeOptions() {
+        if (!Array.isArray(this.employeeCache)) {
+            try {
+                const data = await fetchWithAuth.handleApiCall(
+                    () => fetchWithAuth.get('/api/admin/employee-management'),
+                    '社員一覧の取得に失敗しました'
+                );
+                this.employeeCache = Array.isArray(data?.data) ? data.data : [];
+            } catch (error) {
+                console.error('社員一覧取得エラー:', error);
+                this.employeeCache = [];
+            }
+        }
+
+        if (this.leaveGrantEmployeeSelect) {
+            const selectedIds = new Set(Array.from(this.leaveGrantEmployeeSelect.selectedOptions || []).map(opt => Number(opt.value)));
+            this.leaveGrantEmployeeSelect.innerHTML = '';
+            (this.employeeCache || []).forEach(emp => {
+                const option = document.createElement('option');
+                option.value = emp.employeeId;
+                option.textContent = this.getDisplayEmployeeName(emp);
+                if (selectedIds.has(emp.employeeId)) {
+                    option.selected = true;
+                }
+                this.leaveGrantEmployeeSelect.appendChild(option);
+            });
+        }
+    }
+
+    async loadLeaveBalances() {
+        if (!this.leaveBalanceTableBody) return;
+        this.setTableState(this.leaveBalanceTableBody, 5, 'データを読み込み中...', 'text-muted');
+
+        try {
+            await this.ensureEmployeeOptions();
+            const employees = Array.isArray(this.employeeCache) ? this.employeeCache : [];
+            if (employees.length === 0) {
+                this.setTableState(this.leaveBalanceTableBody, 5, '社員情報が見つかりません', 'text-muted');
+                return;
+            }
+
+            const rows = await Promise.all(employees.map(async (emp) => {
+                try {
+                    const summary = await fetchWithAuth.handleApiCall(
+                        () => fetchWithAuth.get(`/api/leave/remaining/${emp.employeeId}`),
+                        '休暇残数の取得に失敗しました'
+                    );
+                    return { employee: emp, remaining: summary?.remaining || {} };
+                } catch (error) {
+                    console.error('休暇残数取得エラー:', error);
+                    return { employee: emp, remaining: null };
+                }
+            }));
+
+            this.renderLeaveBalances(rows);
+        } catch (error) {
+            console.error('休暇残数読み込みエラー:', error);
+            this.setTableState(this.leaveBalanceTableBody, 5, '休暇残数の取得に失敗しました', 'text-danger');
+        }
+    }
+
+    renderLeaveBalances(rows) {
+        if (!this.leaveBalanceTableBody) return;
+
+        this.leaveBalanceTableBody.innerHTML = '';
+        if (!Array.isArray(rows) || rows.length === 0) {
+            this.setTableState(this.leaveBalanceTableBody, 5, '表示するデータがありません', 'text-muted');
+            return;
+        }
+
+        rows.forEach(({ employee, remaining }) => {
+            const row = document.createElement('tr');
+            const name = this.getDisplayEmployeeName(employee);
+            const paid = this.formatRemainingValue(remaining, 'PAID_LEAVE');
+            const summer = this.formatRemainingValue(remaining, 'SUMMER');
+            const winter = this.formatRemainingValue(remaining, 'WINTER');
+            const special = this.formatRemainingValue(remaining, 'SPECIAL');
+
+            row.innerHTML = `
+                <td>${name}</td>
+                <td>${paid}</td>
+                <td>${summer}</td>
+                <td>${winter}</td>
+                <td>${special}</td>
+            `;
+
+            this.leaveBalanceTableBody.appendChild(row);
+        });
+    }
+
+    formatRemainingValue(remaining, type) {
+        if (!remaining || !(type in (remaining || {}))) {
+            return '-';
+        }
+        const value = Number(remaining[type]);
+        if (!Number.isFinite(value)) {
+            return String(remaining[type]);
+        }
+        return value % 1 === 0 ? `${value}日` : `${value.toFixed(1)}日`;
+    }
+
     /**
      * 管理者承認・却下処理
      */
     async handleApprovalAction(action, requestType, requestId, triggerButton) {
         const isApprove = action === 'approve';
         const typeLabel = requestType === 'adjustment' ? '打刻修正申請'
-            : requestType === 'vacation' ? '有給申請'
+            : (requestType === 'vacation' || requestType === 'leave') ? '休暇申請'
             : '申請';
 
         const confirmOptions = {
@@ -927,7 +1245,7 @@ class AdminScreen {
 
             if (requestType === 'adjustment') {
                 await this.executeAdjustmentAction(isApprove, requestId, reason);
-            } else if (requestType === 'vacation') {
+            } else if (requestType === 'vacation' || requestType === 'leave') {
                 await this.executeVacationAction(isApprove, requestId, reason);
             } else {
                 throw new Error('不明な申請種別です');
@@ -939,7 +1257,7 @@ class AdminScreen {
 
             if (requestType === 'adjustment') {
                 await this.loadPendingApprovals();
-            } else if (requestType === 'vacation') {
+            } else if (requestType === 'vacation' || requestType === 'leave') {
                 await this.loadVacationManagementData();
             }
 
@@ -980,31 +1298,29 @@ class AdminScreen {
     }
 
     /**
-     * 有給申請の承認/却下を実行
+     * 休暇申請の承認/却下を実行
      */
     async executeVacationAction(isApprove, requestId, reason) {
         const numericId = Number(requestId);
         if (!Number.isFinite(numericId)) {
-            throw new Error('有給申請のIDが不正です');
+            throw new Error('休暇申請のIDが不正です');
         }
 
         const payload = {
-            vacationId: numericId,
             approved: isApprove
         };
 
-        // サーバー側で扱っていなくても、将来的な拡張を見据えて理由を添付
         if (!isApprove) {
             const trimmed = reason.trim();
             if (!trimmed) {
                 throw new Error('却下理由は必須です');
             }
-            payload.rejectionReason = trimmed;
+            payload.comment = trimmed;
         }
 
         await fetchWithAuth.handleApiCall(
-            () => fetchWithAuth.post('/api/admin/vacation/approve', payload),
-            isApprove ? '有給申請の承認に失敗しました' : '有給申請の却下に失敗しました'
+            () => fetchWithAuth.post(`/api/admin/leave/requests/${numericId}/decision`, payload),
+            isApprove ? '休暇申請の承認に失敗しました' : '休暇申請の却下に失敗しました'
         );
     }
 
@@ -1121,18 +1437,18 @@ class AdminScreen {
         try {
             const data = await fetchWithAuth
                 .handleApiCall(
-                    () => fetchWithAuth.get(`/api/vacation/remaining/${employeeId}`),
-                    '残有給日数の取得に失敗しました'
+                    () => fetchWithAuth.get(`/api/leave/remaining/${employeeId}`),
+                    '残有休日数の取得に失敗しました'
                 );
             if (data && data.success && typeof data.remainingDays === 'number') {
                 currentRemaining = data.remainingDays;
             }
         } catch (error) {
-            console.warn('残有給日数の取得に失敗しました:', error);
+            console.warn('残有休日数の取得に失敗しました:', error);
         }
 
         const header = currentRemaining !== null
-            ? `現在の残有給日数: ${currentRemaining}日\n\n`
+            ? `現在の残有休日数: ${currentRemaining}日\n\n`
             : '';
         const deltaStr = prompt(`${header}有給日数の増減を入力してください（例: +2 または -1。単位: 日）`);
         if (deltaStr === null) return;
@@ -1151,13 +1467,13 @@ class AdminScreen {
             const absDelta = Math.abs(delta);
             const actionWord = delta > 0 ? '追加' : '減算';
             const projected = currentRemaining + delta;
-            message = `現在の残有給日数: ${currentRemaining}日\n${absDelta}日${actionWord}して${projected}日になります。よろしいですか？`;
+            message = `現在の残有休日数: ${currentRemaining}日\n${absDelta}日${actionWord}して${projected}日になります。よろしいですか？`;
         } else {
             message = `${delta >= 0 ? '+' : ''}${delta}日調整します。よろしいですか？`;
         }
 
         const { confirmed } = await this.promptApprovalDialog({
-            title: '有給残数調整',
+            title: '有休残数調整',
             message,
             confirmLabel: '調整する',
             requireReason: false
@@ -1353,16 +1669,16 @@ class AdminScreen {
                 }
             }
             
-            // 有給申請画面の残有給日数更新
+            // 休暇申請画面の残有休日数更新
             if (hasEmployeeContext && window.vacationScreen) {
-                console.log('有給申請画面の残有給日数を更新中...');
+                console.log('休暇申請画面の残有休日数を更新中...');
                 try {
                     if (typeof window.vacationScreen.loadRemainingVacationDays === 'function') {
                         await window.vacationScreen.loadRemainingVacationDays();
                     }
-                    console.log('有給申請画面の更新完了');
+                    console.log('休暇申請画面の更新完了');
                 } catch (error) {
-                    console.warn('有給申請画面の更新に失敗:', error);
+                    console.warn('休暇申請画面の更新に失敗:', error);
                 }
             }
             
@@ -1532,7 +1848,7 @@ class AdminScreen {
     }
 
     /**
-     * 有給残高調整
+     * 有休残数調整
      * @param {number} employeeId
      * @param {number} deltaDays 正負の整数（日）
      * @param {string} reason 理由
@@ -1541,19 +1857,19 @@ class AdminScreen {
         try {
             const payload = { employeeId, deltaDays, reason };
             const data = await fetchWithAuth.handleApiCall(
-                () => fetchWithAuth.post('/api/admin/vacation/adjust', payload),
-                '有給残高の調整に失敗しました'
+                () => fetchWithAuth.post('/api/admin/leave/balances/adjust', payload),
+                '有休残数の調整に失敗しました'
             );
 
             if (data && (data.success === true || data.status === 'OK')) {
-                this.showAlert('有給残高を調整しました', 'success');
+                this.showAlert('有休残数を調整しました', 'success');
+                await this.loadLeaveBalances();
             } else {
-                this.showAlert((data && data.message) || '有給残高の調整に失敗しました', 'danger');
+                this.showAlert((data && data.message) || '有休残数の調整に失敗しました', 'danger');
             }
-            // 画面の残数表示があれば再取得するが、一覧には残数列がないためスキップ
         } catch (error) {
-            console.error('有給調整エラー:', error);
-            this.showAlert('有給残高の調整中にエラーが発生しました', 'danger');
+            console.error('有休調整エラー:', error);
+            this.showAlert('有休残数の調整中にエラーが発生しました', 'danger');
         }
     }
 
