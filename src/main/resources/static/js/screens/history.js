@@ -13,16 +13,11 @@ const LEAVE_TYPE_LABELS = {
     SPECIAL: '特別'
 };
 
-const LEAVE_TIME_UNIT_MARKERS = {
-    FULL_DAY: '',
-    HALF_AM: '半休AM',
-    HALF_PM: '半休PM'
-};
 
 const LEAVE_TIME_UNIT_LABELS = {
     FULL_DAY: '全日',
-    HALF_AM: '半休（AM）',
-    HALF_PM: '半休（PM）'
+    HALF_AM: 'AM',
+    HALF_PM: 'PM'
 };
 
 class HistoryScreen {
@@ -582,13 +577,10 @@ class HistoryScreen {
                         statusLabel = statusUpper || '申請';
                 }
 
-                const typeLabel = (typeof LEAVE_TYPE_LABELS !== 'undefined')
-                    ? (LEAVE_TYPE_LABELS[vacationRequest.leaveType] || '休暇')
-                    : (vacationRequest.leaveType || '休暇');
-                const unitMarker = (typeof LEAVE_TIME_UNIT_MARKERS !== 'undefined')
-                    ? (LEAVE_TIME_UNIT_MARKERS[vacationRequest.timeUnit] || '')
-                    : (vacationRequest.timeUnit || '');
-                const badgeText = `${typeLabel}${unitMarker ? ` ${unitMarker}` : ''} ${statusLabel}`;
+                const leaveTypeText = LEAVE_TYPE_LABELS[vacationRequest.leaveType] || '有休';
+                const unitLabel = LEAVE_TIME_UNIT_LABELS[vacationRequest.timeUnit] || '';
+                const badgeMain = unitLabel ? `${leaveTypeText}（${unitLabel}）` : leaveTypeText;
+                const badgeText = `${badgeMain} ${statusLabel}`;
                 const dataAttrs = [
                     `data-vacation-id="${vacationRequest.vacationId || ''}"`,
                     `data-status="${vacationRequest.status}"`,
@@ -1640,13 +1632,30 @@ class HistoryScreen {
             return `${year}/${month}/${day}`;
         };
 
-        const leaveTypeLabel = LEAVE_TYPE_LABELS[request.leaveType] || request.leaveType || '休暇';
-        const timeUnitLabel = LEAVE_TIME_UNIT_LABELS[request.timeUnit] || (LEAVE_TIME_UNIT_MARKERS[request.timeUnit] ? `半休（${LEAVE_TIME_UNIT_MARKERS[request.timeUnit]}）` : '全日');
         const daysValue = Number(request.days);
         const daysText = Number.isFinite(daysValue)
             ? `${(daysValue % 1 === 0 ? daysValue : daysValue.toFixed(1))}日`
             : (request.days != null ? `${request.days}日` : '-');
 
+        const leaveTypeLabel = LEAVE_TYPE_LABELS[request.leaveType] || '有休';
+        const timeUnitLabel = LEAVE_TIME_UNIT_LABELS[request.timeUnit] || '-';
+        const startDisplay = formatDate(request.startDate);
+        const endDisplay = formatDate(request.endDate);
+        let targetDisplay = '-';
+        if (startDisplay !== '-' && endDisplay !== '-' && startDisplay !== endDisplay) {
+            targetDisplay = `${startDisplay}〜${endDisplay}`;
+        } else {
+            const targetDateValue = dateString
+                || request.targetDate
+                || request.startDate
+                || request.endDate;
+            targetDisplay = formatDate(targetDateValue);
+        }
+
+        const targetField = document.getElementById('vacationDetailTargetDate');
+        if (targetField) {
+            targetField.textContent = targetDisplay;
+        }
         const typeField = document.getElementById('vacationDetailType');
         if (typeField) {
             typeField.textContent = leaveTypeLabel;
@@ -1655,8 +1664,6 @@ class HistoryScreen {
         if (unitField) {
             unitField.textContent = timeUnitLabel;
         }
-        document.getElementById('vacationDetailStartDate').textContent = formatDate(request.startDate);
-        document.getElementById('vacationDetailEndDate').textContent = formatDate(request.endDate);
         document.getElementById('vacationDetailDays').textContent = daysText;
 
         const statusElement = document.getElementById('vacationDetailStatus');

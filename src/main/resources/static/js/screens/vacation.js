@@ -22,15 +22,15 @@ class VacationScreen {
 
         this.leaveTypeDisplayMap = {
             PAID_LEAVE: '有休',
-            SUMMER: '夏季休暇',
-            WINTER: '冬季休暇',
-            SPECIAL: '特別休暇'
+            SUMMER: '有休',
+            WINTER: '有休',
+            SPECIAL: '有休'
         };
 
         this.timeUnitDisplayMap = {
             FULL_DAY: '全日',
-            HALF_AM: '半休（AM）',
-            HALF_PM: '半休（PM）'
+            HALF_AM: 'AM',
+            HALF_PM: 'PM'
         };
     }
 
@@ -452,18 +452,20 @@ class VacationScreen {
         }
 
         const leaveLabel = this.leaveTypeDisplayMap[leaveType] || leaveType;
-        const unitLabel = this.timeUnitDisplayMap[timeUnit] || '';
+        const unitLabelRaw = this.timeUnitDisplayMap[timeUnit] || '';
+        const unitLabel = unitLabelRaw;
 
         const displayStart = this.formatDateForDisplay(startDate);
         const displayEnd = this.formatDateForDisplay(endDate);
         const rangeText = displayStart === displayEnd ? displayStart : `${displayStart} 〜 ${displayEnd}`;
-        const confirmMessage = `${leaveLabel}${unitLabel ? `（${unitLabel}）` : ''} ${rangeText} の休暇申請を送信します。よろしいですか？`;
+        const summaryLabel = unitLabel ? `${leaveLabel}（${unitLabel}）` : leaveLabel;
+        const confirmMessage = `休暇種別: ${summaryLabel}\n対象日: ${rangeText}\n休暇申請を送信します。よろしいですか？`;
 
         const confirmHandler = window.employeeDialog?.confirm;
         if (confirmHandler) {
             const { confirmed } = await confirmHandler({
                 title: '休暇申請',
-                message: confirmMessage,
+                message: confirmMessage.replace(/\n/g, '\n'),
                 confirmLabel: '申請する',
                 cancelLabel: 'キャンセル'
             });

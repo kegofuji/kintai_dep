@@ -16,8 +16,8 @@ const LEAVE_TYPE_LABELS = {
 
 const LEAVE_TIME_UNIT_MARKERS = {
     FULL_DAY: '',
-    HALF_AM: '半休AM',
-    HALF_PM: '半休PM'
+    HALF_AM: '午前半休',
+    HALF_PM: '午後半休'
 };
 
 class CalendarScreen {

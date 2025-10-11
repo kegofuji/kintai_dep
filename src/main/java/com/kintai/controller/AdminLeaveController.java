@@ -51,7 +51,7 @@ public class AdminLeaveController {
                     leaveRequestService.refreshPaidLeaveBalance(emp.getEmployeeId());
                     Map<String, Object> body = new HashMap<>();
                     body.put("success", true);
-                    body.put("message", "有給残数を調整しました");
+                    body.put("message", "有休残数を調整しました");
                     body.put("adjustmentTotal", emp.getPaidLeaveAdjustment());
                     return ResponseEntity.ok(body);
                 })

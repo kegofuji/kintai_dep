@@ -3,21 +3,15 @@
  */
 const LEAVE_TYPE_LABELS = {
     PAID_LEAVE: '有休',
-    SUMMER: '夏季休暇',
-    WINTER: '冬季休暇',
-    SPECIAL: '特別休暇'
+    SUMMER: '有休',
+    WINTER: '有休',
+    SPECIAL: '有休'
 };
 
 const LEAVE_TIME_UNIT_LABELS = {
     FULL_DAY: '全日',
-    HALF_AM: '半休（AM）',
-    HALF_PM: '半休（PM）'
-};
-
-const LEAVE_TIME_UNIT_MARKERS = {
-    FULL_DAY: '',
-    HALF_AM: 'AM',
-    HALF_PM: 'PM'
+    HALF_AM: '有休（AM）',
+    HALF_PM: '有休（PM）'
 };
 
 class AdminScreen {
@@ -61,6 +55,9 @@ class AdminScreen {
         this.leaveGrantSelectedDates = [];
         this.employeeCache = null;
         this.selectedGrantEmployees = [];
+        this.vacationManagementLoading = false;
+        this.vacationManagementPoller = null;
+        this.vacationManagementVisibilityHandler = null;
     }
 
     /**
@@ -259,7 +256,7 @@ class AdminScreen {
             const dayToRecord = new Map();
             records.forEach(r => { dayToRecord.set(r.attendanceDate, r); });
 
-            // 当該社員の有給・打刻修正を取得（履歴カレンダー用のバッジ表示）
+            // 当該社員の休暇・打刻修正を取得（履歴カレンダー用のバッジ表示）
             let vacationByDate = new Map();
             let adjustmentByDate = new Map();
             try {
@@ -391,6 +388,7 @@ class AdminScreen {
      * 社員管理画面初期化
      */
     initEmployees() {
+        this.stopVacationManagementPolling();
         this.initializeEmployeeElements();
         this.setupEmployeeEventListeners();
         this.loadEmployees();
@@ -407,6 +405,7 @@ class AdminScreen {
      */
     initApprovals() {
         console.log('initApprovals 開始');
+        this.stopVacationManagementPolling();
         this.initializeApprovalElements();
         this.setupApprovalEventListeners();
         this.loadPendingApprovals();
@@ -417,6 +416,7 @@ class AdminScreen {
      * 月末申請管理画面初期化
      */
     initMonthlySubmissions() {
+        this.stopVacationManagementPolling();
         this.initializeMonthlySubmissionElements();
         this.setupMonthlySubmissionEventListeners();
         this.loadMonthlySubmissions();
@@ -426,6 +426,7 @@ class AdminScreen {
      * レポート出力画面初期化
      */
     initReports() {
+        this.stopVacationManagementPolling();
         this.initializeReportElements();
         this.setupReportEventListeners();
         this.generateReportMonthOptions();
@@ -444,6 +445,7 @@ class AdminScreen {
         this.setupVacationManagementEventListeners();
         this.loadVacationManagementData();
         this.loadLeaveBalances();
+        this.startVacationManagementPolling();
     }
 
     /**
@@ -602,7 +604,88 @@ class AdminScreen {
      * 休暇管理イベントリスナー設定
      */
     setupVacationManagementEventListeners() {
-        // 休暇管理のイベントリスナーは必要に応じて追加
+        if (this.leaveGrantForm && !this.leaveGrantForm.dataset.bound) {
+            this.leaveGrantForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.handleLeaveGrantSubmit();
+            });
+            this.leaveGrantForm.dataset.bound = 'true';
+        }
+
+        if (this.leaveGrantTypeSelect && !this.leaveGrantTypeSelect.dataset.bound) {
+            this.leaveGrantTypeSelect.addEventListener('change', () => this.handleLeaveGrantTypeChange());
+            this.leaveGrantTypeSelect.dataset.bound = 'true';
+        }
+
+        if (this.leaveGrantScopeSelect && !this.leaveGrantScopeSelect.dataset.bound) {
+            this.leaveGrantScopeSelect.addEventListener('change', () => this.handleLeaveGrantScopeChange());
+            this.leaveGrantScopeSelect.dataset.bound = 'true';
+        }
+
+        if (this.leaveGrantAddDateButton && !this.leaveGrantAddDateButton.dataset.bound) {
+            this.leaveGrantAddDateButton.addEventListener('click', () => this.handleAddSpecialDate());
+            this.leaveGrantAddDateButton.dataset.bound = 'true';
+        }
+
+        if (this.leaveGrantSpecialDateList && !this.leaveGrantSpecialDateList.dataset.bound) {
+            this.leaveGrantSpecialDateList.addEventListener('click', (e) => {
+                const badge = e.target.closest('span.badge[data-date]');
+                if (!badge) return;
+                const date = badge.getAttribute('data-date');
+                this.leaveGrantSelectedDates = this.leaveGrantSelectedDates.filter(item => item !== date);
+                this.renderSpecialDateList();
+            });
+            this.leaveGrantSpecialDateList.dataset.bound = 'true';
+        }
+
+        if (this.refreshLeaveRequestsButton && !this.refreshLeaveRequestsButton.dataset.bound) {
+            this.refreshLeaveRequestsButton.addEventListener('click', () => this.loadVacationManagementData());
+            this.refreshLeaveRequestsButton.dataset.bound = 'true';
+        }
+
+        if (this.refreshLeaveBalancesButton && !this.refreshLeaveBalancesButton.dataset.bound) {
+            this.refreshLeaveBalancesButton.addEventListener('click', () => this.loadLeaveBalances());
+            this.refreshLeaveBalancesButton.dataset.bound = 'true';
+        }
+
+        if (!this.vacationManagementVisibilityHandler) {
+            this.vacationManagementVisibilityHandler = () => {
+                if (document.hidden) return;
+                if (window.router?.getCurrentRoute?.() === '/admin/vacation-management') {
+                    this.loadVacationManagementData();
+                }
+            };
+            document.addEventListener('visibilitychange', this.vacationManagementVisibilityHandler);
+        }
+
+        // 初期表示用にタイプによる制御を反映
+        this.handleLeaveGrantTypeChange();
+        this.handleLeaveGrantScopeChange();
+        this.renderSpecialDateList();
+    }
+
+    startVacationManagementPolling() {
+        if (this.vacationManagementPoller) {
+            clearInterval(this.vacationManagementPoller);
+        }
+        this.vacationManagementPoller = setInterval(() => {
+            if (document.hidden) return;
+            if (window.router?.getCurrentRoute?.() !== '/admin/vacation-management') {
+                return;
+            }
+            this.loadVacationManagementData();
+        }, 15000);
+    }
+
+    stopVacationManagementPolling() {
+        if (this.vacationManagementPoller) {
+            clearInterval(this.vacationManagementPoller);
+            this.vacationManagementPoller = null;
+        }
+        if (this.vacationManagementVisibilityHandler) {
+            document.removeEventListener('visibilitychange', this.vacationManagementVisibilityHandler);
+            this.vacationManagementVisibilityHandler = null;
+        }
     }
 
     /**
@@ -691,10 +774,10 @@ class AdminScreen {
             const email = employee.email || `${username}@example.com`;
             const hireDate = employee.hireDate ? new Date(employee.hireDate).toLocaleDateString('ja-JP') : '-';
 
-            // 退職済み社員には有給調整ボタンを表示しない
+            // 退職済み社員には有休調整ボタンを表示しない
             const vacationAdjustButton = employee.isActive 
                 ? `<button class="btn btn-sm btn-outline-primary me-1 edit-employee-btn" data-employee-id="${employee.employeeId}">
-                     <i class="fas fa-hand-holding-medical"></i> 有給調整
+                     <i class="fas fa-hand-holding-medical"></i> 有休調整
                    </button>`
                 : '';
 
@@ -879,7 +962,12 @@ class AdminScreen {
      * 休暇管理データ読み込み
      */
     async loadVacationManagementData() {
-        if (!this.vacationManagementTableBody) return;
+        if (!this.vacationManagementTableBody) {
+            this.initializeVacationManagementElements();
+        }
+        if (!this.vacationManagementTableBody || this.vacationManagementLoading) return;
+
+        this.vacationManagementLoading = true;
 
         this.setTableState(this.vacationManagementTableBody, 6, 'データを読み込み中...', 'text-muted');
 
@@ -905,6 +993,8 @@ class AdminScreen {
         } catch (error) {
             console.error('休暇申請読み込みエラー:', error);
             this.setTableState(this.vacationManagementTableBody, 6, '休暇申請の取得に失敗しました', 'text-danger');
+        } finally {
+            this.vacationManagementLoading = false;
         }
     }
 
@@ -941,7 +1031,7 @@ class AdminScreen {
                     `
                 : '<span class="text-muted">処理済</span>';
 
-            const typeLabel = LEAVE_TYPE_LABELS[entry.leaveType] || entry.leaveType || '-';
+            const typeLabel = '有休';
             const unitLabel = LEAVE_TIME_UNIT_LABELS[entry.timeUnit] || entry.timeUnit || '-';
 
             row.innerHTML = `
@@ -1432,7 +1522,7 @@ class AdminScreen {
      * @param {number} employeeId - 社員ID
      */
     async editEmployee(employeeId) {
-        // 有給調整ダイアログ
+        // 有休調整ダイアログ
         let currentRemaining = null;
         try {
             const data = await fetchWithAuth
@@ -1450,7 +1540,7 @@ class AdminScreen {
         const header = currentRemaining !== null
             ? `現在の残有休日数: ${currentRemaining}日\n\n`
             : '';
-        const deltaStr = prompt(`${header}有給日数の増減を入力してください（例: +2 または -1。単位: 日）`);
+        const deltaStr = prompt(`${header}有休日数の増減を入力してください（例: +2 または -1。単位: 日）`);
         if (deltaStr === null) return;
         const normalized = (deltaStr || '').trim();
         if (!/^[-+]?\d+$/.test(normalized)) {
@@ -1815,7 +1905,7 @@ class AdminScreen {
         }, 5000);
     }
 
-    // ここから下の従来の編集モーダル系は廃止（有給調整に置換）
+    // ここから下の従来の編集モーダル系は廃止（有休調整に置換）
 
     /**
      * 社員情報更新

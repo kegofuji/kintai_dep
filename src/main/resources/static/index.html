@@ -421,7 +421,7 @@
 
             <!-- 打刻修正申請詳細モーダル -->
             <div class="modal fade" id="adjustmentDetailModal" tabindex="-1" aria-labelledby="adjustmentDetailModalLabel" aria-hidden="true">
-                <div class="modal-dialog modal-lg">
+                <div class="modal-dialog">
                     <div class="modal-content">
                         <div class="modal-header">
                             <h5 class="modal-title" id="adjustmentDetailModalLabel">打刻修正申請詳細</h5>
@@ -505,20 +505,16 @@
                                     <h6>申請情報</h6>
                                     <table class="table table-sm">
                                         <tr>
+                                            <td><strong>対象日:</strong></td>
+                                            <td id="vacationDetailTargetDate">-</td>
+                                        </tr>
+                                        <tr>
                                             <td><strong>休暇種別:</strong></td>
                                             <td id="vacationDetailType">-</td>
                                         </tr>
                                         <tr>
                                             <td><strong>取得単位:</strong></td>
                                             <td id="vacationDetailTimeUnit">-</td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>開始日:</strong></td>
-                                            <td id="vacationDetailStartDate">-</td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>終了日:</strong></td>
-                                            <td id="vacationDetailEndDate">-</td>
                                         </tr>
                                         <tr>
                                             <td><strong>申請日数:</strong></td>
@@ -569,8 +565,8 @@
                                 <label for="vacationTypeSelect" class="form-label">休暇種別 <span class="text-danger">*</span></label>
                                 <select class="form-select" id="vacationTypeSelect" required>
                                     <option value="PAID_LEAVE:FULL_DAY">有休（全日）</option>
-                                    <option value="PAID_LEAVE:HALF_AM">半休（AM）</option>
-                                    <option value="PAID_LEAVE:HALF_PM">半休（PM）</option>
+                                    <option value="PAID_LEAVE:HALF_AM">有休（AM）</option>
+                                    <option value="PAID_LEAVE:HALF_PM">有休（PM）</option>
                                     <option value="SUMMER:FULL_DAY">夏季休暇</option>
                                     <option value="WINTER:FULL_DAY">冬季休暇</option>
                                     <option value="SPECIAL:FULL_DAY">特別休暇</option>

@@ -170,11 +170,20 @@ public class LeaveRequestService {
         return leaveRequestRepository.findByEmployeeIdOrderByCreatedAtDesc(employeeId);
     }
 
-    @Transactional(readOnly = true)
     public Map<LeaveType, BigDecimal> getRemainingLeaveSummary(Long employeeId) {
         Map<LeaveType, BigDecimal> summary = new EnumMap<>(LeaveType.class);
+        Employee employee = employeeRepository.findByEmployeeId(employeeId).orElse(null);
         for (LeaveType type : LeaveType.values()) {
-            summary.put(type, getRemainingLeaveDays(employeeId, type));
+            BigDecimal remaining;
+            if (type == LeaveType.PAID_LEAVE && employee != null) {
+                LeaveBalance balance = ensureBalance(employee, type);
+                remaining = balance.getRemainingDays();
+            } else {
+                remaining = leaveBalanceRepository.findByEmployeeIdAndLeaveType(employeeId, type)
+                        .map(LeaveBalance::getRemainingDays)
+                        .orElse(BigDecimal.ZERO);
+            }
+            summary.put(type, remaining);
         }
         return summary;
     }
