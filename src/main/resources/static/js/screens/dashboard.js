@@ -267,7 +267,7 @@ class DashboardScreen {
         const currentDateElement = document.getElementById('currentDate');
         if (currentDateElement) {
             const year = now.getFullYear();
-            const month = now.getMonth() + 1;
+            const month = String(now.getMonth() + 1).padStart(2, '0');
             const date = now.getDate();
             const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
             const dayName = dayNames[now.getDay()];
