@@ -72,15 +72,21 @@
             line-height: 1.1;
             color: #0f172a;
             margin-top: clamp(1rem, 2.5vw, 1.5rem);
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            flex-wrap: nowrap;
+            gap: clamp(0.5rem, 1.2vw, 0.9rem);
+            white-space: nowrap;
         }
         #currentDate,
         #currentTime {
-            font-size: clamp(2.4rem, 6vw, 3.6rem) !important;
+            font-size: clamp(2rem, 4.8vw, 3.2rem) !important;
             font-weight: 700 !important;
             color: inherit !important;
         }
         .current-datetime-value span + span {
-            margin-left: clamp(0.75rem, 2vw, 1.5rem);
+            margin-left: 0;
         }
         .clock-action-card {
             display: flex;
@@ -165,6 +171,10 @@
             .clock-display-card,
             .clock-action-card {
                 padding: 1.5rem;
+            }
+            #currentDate,
+            #currentTime {
+                font-size: clamp(1.8rem, 9vw, 2.4rem) !important;
             }
             .clock-btn {
                 min-width: 100%;
