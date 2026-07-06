@@ -14,7 +14,6 @@ const clockOutBtn = document.getElementById('clockOutBtn');
 const refreshHistoryBtn = document.getElementById('refreshHistoryBtn');
 const attendanceHistory = document.getElementById('historyTableBody');
 const monthlySubmitBtn = document.getElementById('monthlySubmitBtn');
-const monthSelect = document.getElementById('historyMonthSelect');
 // 管理者メニューアイテムの要素を取得
 const adminVacationManagementNavItem = document.getElementById('adminVacationManagementNavItem');
 const adminEmployeesNavItem = document.getElementById('adminEmployeesNavItem');
@@ -872,8 +871,6 @@ function setupNavigationListeners() {
                 fallbackInit: () => {
                     if (window.historyScreen && !window.historyScreen.initialized) {
                         window.historyScreen.init();
-                    } else if (!window.historyScreen) {
-                        setupHistoryMonthSelect();
                     }
                 }
             });
@@ -1153,9 +1150,6 @@ function showScreen(screenId) {
         // 勤怠履歴画面の初期化（重複防止）
         if (window.historyScreen && !window.historyScreen.initialized) {
             window.historyScreen.init();
-        } else if (!window.historyScreen) {
-            // フォールバック: 基本的な初期化のみ
-            setupHistoryMonthSelect();
         }
     } else if (screenId === 'dashboardScreen') {
         // ダッシュボード画面の初期化
@@ -1970,73 +1964,5 @@ function updateButtonStates(record, clockInBtn, clockOutBtn) {
         clockOutBtn.classList.remove('btn-secondary');
         clockOutBtn.classList.add('btn-danger');
         clockOutBtn.textContent = '退勤';
-    }
-}
-
-// 勤怠履歴画面の月選択設定
-function setupHistoryMonthSelect() {
-    const historyMonthSelect = document.getElementById('historyMonthSelect');
-    const searchHistoryBtn = document.getElementById('searchHistoryBtn');
-    
-    if (historyMonthSelect) {
-        // 月選択オプションを生成
-        generateHistoryMonthOptions();
-        
-        // 月選択イベントリスナー
-        historyMonthSelect.addEventListener('change', function() {
-            const selectedValue = this.value;
-            if (selectedValue) {
-                const [year, month] = selectedValue.split('-');
-                window.currentCalendarYear = parseInt(year);
-                window.currentCalendarMonth = parseInt(month) - 1;
-                if (window.historyScreen) {
-                    window.historyScreen.generateCalendar();
-                }
-            }
-        });
-    }
-    
-    if (searchHistoryBtn) {
-        searchHistoryBtn.addEventListener('click', function() {
-            const selectedValue = historyMonthSelect.value;
-            if (selectedValue) {
-                const [year, month] = selectedValue.split('-');
-                window.currentCalendarYear = parseInt(year);
-                window.currentCalendarMonth = parseInt(month) - 1;
-                if (window.historyScreen) {
-                    window.historyScreen.generateCalendar();
-                }
-            } else {
-                showAlert('月を選択してください', 'warning');
-            }
-        });
-    }
-}
-
-// 勤怠履歴用月選択オプション生成
-function generateHistoryMonthOptions() {
-    const historyMonthSelect = document.getElementById('historyMonthSelect');
-    if (!historyMonthSelect) return;
-
-    // 既存のオプションをクリア（最初のオプション以外）
-    while (historyMonthSelect.children.length > 1) {
-        historyMonthSelect.removeChild(historyMonthSelect.lastChild);
-    }
-
-    const currentDate = new Date();
-    const currentYear = currentDate.getFullYear();
-
-    // 現在年から過去3年分の1-12月を生成
-    for (let year = currentYear; year >= currentYear - 2; year--) {
-        for (let month = 12; month >= 1; month--) {
-            const monthStr = String(month).padStart(2, '0');
-            const value = `${year}-${monthStr}`;
-            const label = `${year}/${monthStr}`;
-
-            const option = document.createElement('option');
-            option.value = value;
-            option.textContent = label;
-            historyMonthSelect.appendChild(option);
-        }
     }
 }

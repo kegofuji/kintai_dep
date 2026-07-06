@@ -9,7 +9,6 @@ class DashboardScreen {
         this.refreshHistoryBtn = null;
         this.attendanceHistory = null;
         this.monthlySubmitBtn = null;
-        this.monthSelect = null;
         this.logoutBtn = null;
         this.breakTimeElement = null;
         this.currentAttendance = null;
@@ -34,8 +33,6 @@ class DashboardScreen {
             // セッション情報を再確認
             this.checkSessionAndLoadData();
         }
-        
-        this.generateMonthOptions();
         
         // 現在時刻を1秒ごとに更新
         setInterval(() => {
@@ -100,7 +97,6 @@ class DashboardScreen {
         this.refreshHistoryBtn = document.getElementById('refreshHistoryBtn');
         this.attendanceHistory = document.getElementById('attendanceHistory');
         this.monthlySubmitBtn = document.getElementById('monthlySubmitBtn');
-        this.monthSelect = document.getElementById('historyMonthSelect');
         this.logoutBtn = document.getElementById('logoutBtn');
         this.breakTimeElement = document.getElementById('breakTime');
     }
@@ -674,30 +670,6 @@ class DashboardScreen {
         } catch (error) {
             console.error('ログアウトエラー:', error);
             this.showAlert('ログアウト処理中にエラーが発生しました', 'danger');
-        }
-    }
-
-    /**
-     * 月選択オプション生成
-     */
-    generateMonthOptions() {
-        if (!this.monthSelect) return;
-
-        const currentDate = new Date();
-        const currentYear = currentDate.getFullYear();
-        const currentMonth = currentDate.getMonth() + 1;
-
-        for (let i = 0; i < 12; i++) {
-            const date = new Date(currentYear, currentMonth - 1 - i, 1);
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const value = `${year}-${month}`;
-            const label = `${year}年${month}月`;
-
-            const option = document.createElement('option');
-            option.value = value;
-            option.textContent = label;
-            this.monthSelect.appendChild(option);
         }
     }
 

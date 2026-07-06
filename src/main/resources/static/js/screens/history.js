@@ -3,7 +3,7 @@
  */
 const HISTORY_CALENDAR_RANGE = {
     start: { year: 2025, month: 0 },
-    end: { year: 2027, month: 11 }
+    end: { year: 2099, month: 11 }
 };
 
 
